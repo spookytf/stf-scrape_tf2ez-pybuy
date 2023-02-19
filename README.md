@@ -23,7 +23,7 @@ The `config.ini` file contains only one option under `[LOGIN]`:
 `method = cookie/steam`
 
 
-If you select `cookie`, you will need to add the cookie in the `.env` file. However, it will not require steam login every time you launch the program. Selecting `steam` will do the opposite.
+If you select `cookie`, you will need to add the `laravel_session` cookie in the `.env` file. However, it will not require steam login every time you launch the program. Selecting `steam` will do the opposite.
 
 You will also need to create a `.env` file in the following format:
 
