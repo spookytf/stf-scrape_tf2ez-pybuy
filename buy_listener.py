@@ -9,7 +9,22 @@ import undetected_chromedriver as uc
 import time
 import logging
 import json
-import configparser
+
+global platform
+
+from sys import platform
+
+if platform == "linux" or platform == "linux2":
+    # linux
+    OS = "linux"
+elif platform == "darwin":
+    # OS X
+    OS = "mac"
+elif platform == "win32":
+    # Windows...
+    OS = "windows"
+
+print(f"platform is {OS}")
 
 
 def buy_item_by_id(item_id, item_price, item_hash_name):
@@ -118,8 +133,21 @@ class BuyListener:
 
         # ---------------- Login process ---------------- #
         global driver
-        driver = uc.Chrome(options=options)
-        # if head == "headless": options.add_argument("--headless")
+        if not OS == "windows":
+            try:
+                driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver"))
+            except:
+                logging.error("Couldn't find the default Google Chrome binaries. Perhaps you haven't installed Google "
+                              "Chrome?")
+                logging.error("if you are on Ubuntu/Debian: make sure you have wget, then use the following command "
+                              "to install the latest version of Google Chrome:")
+                logging.critical("$ wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb "
+                                 "&& sudo dpkg -i google-chrome-stable_current_amd64.deb")
+                input("Press any key to exit...")
+                exit(1)
+        else:
+            driver = uc.Chrome(options=options)
+
         global wait
         wait = WebDriverWait(driver, 60)
         driver.get(scrape_url)
@@ -160,7 +188,3 @@ class BuyListener:
 
         logging.info("Waiting for messages...")
         self.channel.start_consuming()
-
-
-
-
