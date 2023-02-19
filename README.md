@@ -2,13 +2,16 @@
 
 This is a Python-based scraper for purchasing undervalued items on tf2easy.com. The application is designed to communicate with stf-scrape_tf2ez using rabbitmq.
 
+> Written by @Osc44r on GitHub, software developer at [**SpookyTF**](https://spooky.tf/)    
+
 ## Prerequisites
 
 To use stf-scrape_tf2ez-pybuy, you must have the following:
 
 - Python 3.7 or higher
 - An active account on tf2easy.com
-- A pika broker running with username and password
+- A rabbitmq instance to connect to
+- A user on that instance with username and password
 
 ## Installation
 
