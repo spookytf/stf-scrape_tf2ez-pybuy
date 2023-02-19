@@ -170,6 +170,9 @@ class BuyListener:
             return
         try:
             wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'menu-username-text')))
+            if login_method == "steam":
+                generated_cookie = driver.get_cookie("laravel_session")['value']
+                dotenv.set_key('.env','LOGIN_COOKIE',generated_cookie)
         except:
             logging.info("Couldn't login. (Wrong cookie?)")
             return
@@ -188,3 +191,7 @@ class BuyListener:
 
         logging.info("Waiting for messages...")
         self.channel.start_consuming()
+
+
+
+
