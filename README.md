@@ -2,7 +2,7 @@
 
 This is a Python-based scraper for purchasing undervalued items on tf2easy.com. The application is designed to communicate with stf-scrape_tf2ez using rabbitmq.
 
-> Written by @Osc44r on GitHub, software developer at [**SpookyTF**](https://spooky.tf/)    
+> Written by [@Osc44r](https://github.com/Osc44r) on GitHub, software developer at [**SpookyTF**](https://spooky.tf/)    
 
 ## Prerequisites
 
