@@ -31,11 +31,11 @@ If you select `cookie`, you will need to add the `laravel_session` cookie in the
 You will also need to create a `.env` file in the following format:
 
 ```
-pika_host =
-pika_port =
-pika_username =
-pika_password =
-login_cookie =
+PIKA_HOST=
+PIKA_PORT=
+PIKA_USERNAME=
+PIKA_PASSWORD=
+LOGIN_COOKIE=
 ```
 If you have any questions or require further assistance, please feel free to contact the project owner.
 
