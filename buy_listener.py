@@ -6,11 +6,21 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import undetected_chromedriver as uc
-import time
+import discord_webhook
+import time as time
 import logging
 import json
+import random
 
 global platform
+global LAST_TIME
+LAST_TIME = -1
+global DELAY_RANGE
+DELAY_RANGE = 15
+global COOLDOWN
+COOLDOWN = 0
+global ELAPSED_STR
+ELAPSED_STR = None
 
 from sys import platform
 
@@ -25,7 +35,6 @@ elif platform == "win32":
     OS = "windows"
 
 print(f"platform is {OS}")
-
 
 def buy_item_by_id(item_id, item_price, item_hash_name):
     bot_inventory = driver.find_element(By.CLASS_NAME, "market-items")
@@ -55,7 +64,12 @@ def buy_item_by_id(item_id, item_price, item_hash_name):
         }
 
 
+global ITEMS
+ITEMS = []
+
 def callback(ch, method, properties, body):
+    global LAST_TIME
+    logging.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
     message_dict = json.loads(body)
     item_hash_name = message_dict['item_hash_name']
     item_id = message_dict['item_id']
@@ -75,63 +89,117 @@ def callback(ch, method, properties, body):
 
     logging.info(f"({item_hash_name}) - Attempting to buy for ${buy_usd}.")
 
-    status = buy_item_by_id(item_id, buy_usd, item_hash_name)
-    if status['success'] is False:
-        logging.info(f"({item_hash_name}) - Can not complete order. {status['message']}")
+    # calculate profit
+    profit = sell_usd - buy_usd
+
+    global ITEMS
+    # base case: if list is empty
+    if not len(ITEMS):
+        ITEMS.append({
+            'profit': profit,
+            'item': message_dict,
+        })
+        logging.debug(f"({item_hash_name}) - Profit: ${profit}.")
+
+    # insert sorted by profit
+    for index, item in enumerate(ITEMS):
+        if item['profit'] < profit:
+            ITEMS.insert(index, {
+                'profit': profit,
+                'item': message_dict,
+            })
+            break
+
+    # if we've elapsed the cooldown time, buy the best item.
+    # TODO: what if this item is already gone by the time we finish our cooldown? @Osc44r
+    global COOLDOWN, DELAY_RANGE
+    if(time.time() - LAST_TIME > COOLDOWN):
+        rand_delay = random.randint(0, DELAY_RANGE)
+        logging.debug("rand_delay: " + str(rand_delay) + " seconds")
+        COOLDOWN = rand_delay
+        logging.info("COOLDOWN: " + str(COOLDOWN) + " seconds")
+
+        # select the first item in the list (most profit) (sorted above)
+        item_id = ITEMS[0]['item']['item_id']
+        item_hash_name = ITEMS[0]['item']['item_hash_name']
+        buy_usd = ITEMS[0]['item']['buy_prices']['usd']
+
+        # remove the item from the list
+        ITEMS.pop(0)
+
+        # input(f"Buy some shit? Profit: ${profit} -- hit enter to continue...")  # TODO: remove this
+        status = buy_item_by_id(item_id, buy_usd, item_hash_name)
+
+        # wait(5) #TODO: stupid
+
+        if not status['success']:
+            logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
+        else:
+            logging.info(f"({item_hash_name}) - item bought successfully.")
+
+        LAST_TIME = float(time.time())
+
+        # Discord notification there
+        webhook = discord_webhook.DiscordWebhook(url=os.getenv("DISCORD_WEBHOOK_URL"),
+                                                 content=f"({item_hash_name}) - {status['message']}")
+        webhook.execute()
+
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
     else:
-        logging.info(f"({item_hash_name}) - item bought successfully.")
+        global ELAPSED_TIME, ELAPSED_STR
+        ELAPSED_TIME = COOLDOWN - LAST_TIME
 
-    # Discord notification there
+    if ELAPSED_STR is not None:
+        ELAPSED_STR.set("cooldown left: " + str(COOLDOWN - ELAPSED_TIME))
 
-    ch.basic_ack(delivery_tag=method.delivery_tag)
 
 
 class BuyListener:
     channel = None
     config = None
+    connection = None
+    login_method = None
+    scrape_url = None
+    delay_range = None
     pika_host = None
     pika_port = None
     pika_username = None
     pika_password = None
     pika_queue = None
 
-    def __init__(self, config, pika_host, pika_port, pika_username, pika_password):
-        self.config = config
+    def __init__(self, logging, pika_host, pika_port, pika_username, pika_password, pika_queue, delay_range, scrape_url, login_method):
+        self.delay_range = delay_range
+        logging = logging
+        self.connection = None
+        self.channel = None
+        self.scrape_url = scrape_url
         self.pika_host = pika_host
         self.pika_port = pika_port
         self.pika_username = pika_username
         self.pika_password = pika_password
+        self.pika_queue = pika_queue
+        self.login_method = login_method
 
-        self.main()
+        # make sure URL ends with a slash
 
-    def main(self):
-        credentials = pika.PlainCredentials(self.pika_username, self.pika_password)
-        connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.pika_host, port=self.pika_port, credentials=credentials))
-        self.channel = connection.channel()
-        self.channel.queue_declare(queue=self.config['RABBITMQ']['queue'], durable=True)
+        if self.scrape_url is not None:
+            if not scrape_url.endswith("/"):
+                scrape_url = scrape_url + "/"
 
-        # ---------------- Configure logging ---------------- #
-        logging.basicConfig(level="INFO",
-                            format='%(levelname)s %(asctime)s - %(message)s',
-                            datefmt='%H:%M:%S')
-        logging.getLogger('urllib3').setLevel(logging.WARNING)
-        logging.getLogger('selenium').setLevel(logging.WARNING)
-        logging.getLogger('undetected_chromedriver').setLevel(logging.WARNING)
+            self.main()
 
-        # ---------------- Configure CLI flags ---------------- #
+    def delayed_passthrough(self, elapsed_str):
+        global ELAPSED_STR
+        ELAPSED_STR = elapsed_str
+
+    def init_selenium_and_login(self):
+        # ---------------- Configure Driver Options ---------------- #
         options = Options()
         options.add_argument("--ignore-certificate-errors")
         options.add_argument("--start-maximized")
 
-        # head = config['BROWSER']['method'].lower()
-
-        # make sure URL ends with a slash
-        scrape_url = self.config['SCRAPE']['url']
-        if not scrape_url.endswith("/"):
-            scrape_url = scrape_url + "/"
-
-        # ---------------- Login process ---------------- #
+        # ---------------- Init Driver, then Login ---------------- #
         global driver
         if not OS == "windows":
             try:
@@ -150,10 +218,11 @@ class BuyListener:
 
         global wait
         wait = WebDriverWait(driver, 60)
-        driver.get(scrape_url)
+        driver.get(self.scrape_url)
 
-        login_method = self.config['LOGIN']['method'].lower()
+        login_method = self.login_method.lower()
 
+        logging.info("login method is defined as: " + login_method)
         if login_method == "steam":
             driver.find_element(By.CLASS_NAME, "login-block").click()
             time.sleep(1)
@@ -166,32 +235,51 @@ class BuyListener:
             })
             driver.refresh()
         else:
-            logging.info("You have to select login method in config.ini!")
+            logging.critical("You have to select login method in config.ini!")
+            exit(1)
             return
         try:
             wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'menu-username-text')))
             if login_method == "steam":
                 generated_cookie = driver.get_cookie("laravel_session")['value']
-                dotenv.set_key('.env','LOGIN_COOKIE',generated_cookie)
+                dotenv.set_key('.env', 'LOGIN_COOKIE', generated_cookie)
         except:
             logging.info("Couldn't login. (Wrong cookie?)")
             return
 
-        logging.info("Logged in!")
-        driver.get(scrape_url + "market")
+        logging.info("LOGGED IN SUCCESSFULLY!")
+        driver.get(self.scrape_url + "market")
 
-        # wait for page to load
-        # TODO: probably want to fix this but it works for now
-        time.sleep(5)
+        # wait for market nav to load
+        wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'new-item-info-holder')))
+
+    def main(self):
+        #self.init_selenium_and_login()
+        global DELAY_RANGE
+        DELAY_RANGE = self.delay_range
+        logging.warning("Deal listener initialized.")
+
 
     def start(self):
         # ---------------- Start listening for messages ---------------- #
-        self.channel.basic_qos(prefetch_count=1)
-        self.channel.basic_consume(queue=self.config['RABBITMQ']['queue'], on_message_callback=callback)
+        self.connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=self.pika_host, port=self.pika_port, credentials=pika.PlainCredentials(self.pika_username, self.pika_password)))
+        self.channel = self.connection.channel()
 
+        self.channel.queue_declare(queue=self.pika_queue, durable=True)
+        self.channel.basic_qos(prefetch_count=1)
+        self.channel.basic_consume(queue=self.pika_queue, on_message_callback=callback)
+
+        # clear old deals so we don't waste time
+        self.channel.queue_purge(queue=self.pika_queue)
         logging.info("Waiting for messages...")
         self.channel.start_consuming()
 
-
-
-
+    def stop(self):
+        if self.connection is not None :
+            self.connection.close()
+        if self.channel is not None :
+            self.channel.stop_consuming()
+        global driver
+        if driver is not None:
+            driver.quit()
