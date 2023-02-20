@@ -11,7 +11,7 @@ import tkinter.scrolledtext as ScrolledText
 
 from buy_listener import BuyListener
 
-__version__ = "v1.6.1" # update this when you update the version in setup.py
+__version__ = "v2.0.0" # update this when you update the version in setup.py
 
 global LAST_TIME
 LAST_TIME = float(time.time())
