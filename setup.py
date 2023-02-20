@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
-
+import __version__
 
 setup(
     name='stf-scrape_tf2ez-pybuy',
-    version='1.5.0',
+    version=__version__,
     description='Python scraper designed to purchase items from tf2ez stock, which employs rabbitmq for communication with stf-scrape_tf2ez',
     author='Oskar Stasiak, Jason McElhenney',
     author_email='oscar@spooky.tf, jason@spooky.tf',

@@ -11,17 +11,22 @@ import tkinter.scrolledtext as ScrolledText
 
 from buy_listener import BuyListener
 
-global COOLDOWN
-COOLDOWN = 0
+__version__ = "v1.6.0" # update this when you update the version in setup.py
+
 global LAST_TIME
 LAST_TIME = float(time.time())
-global ELAPSED_TIME
-ELAPSED_TIME = 0
+global DELAY_RANGE
+DELAY_RANGE = 60
+#DELAY_RANGE = tk.IntVar()
+#DELAY_RANGE.set(45)
+
+global GUI_OBJECTS
+GUI_OBJECTS = {}
 
 LOG_COLOR_LEVEL_TO_COLOR = {
     'DEBUG': 'black',
     'INFO': 'green',
-    'WARNING': 'grey',
+    'WARNING': 'yellow',
     'ERROR': 'red',
     'CRITICAL': 'red',
 }
@@ -41,7 +46,7 @@ class TextHandler(logging.Handler):
     def __init__(self, text):
         # run the regular Handler __init__
         logging.Handler.__init__(self)
-        #logging.Handler.setFormatter(self, coloredlogs.ColoredFormatter())
+        # logging.Handler.setFormatter(self, coloredlogs.ColoredFormatter())
 
         # Store a reference to the Text it will log to
         self.text = text
@@ -53,6 +58,7 @@ class TextHandler(logging.Handler):
             self.text.insert(tk.END, msg + '\n', record.levelname)
             self.text.tag_config(record.levelname, foreground=f"{LOG_COLOR_LEVEL_TO_COLOR[record.levelname]}")
             self.text.tag_config("CRITICAL", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['CRITICAL']}", font=("Arial", 10, "bold"))
+            #self.text.tag_config("WARNING", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['WARNING']}", background="black")
             self.text.configure(state='disabled')
             # Autoscroll to the bottom
             self.text.yview(tk.END)
@@ -60,7 +66,7 @@ class TextHandler(logging.Handler):
         self.text.after(0, append)
 
 class GUI(threading.Thread):
-    elapsed_str = None
+    buy_listener = None
     def __init__(self, buy_listener):
         super().__init__()
         self.thread = None
@@ -87,14 +93,17 @@ class GUI(threading.Thread):
         self.root.frame.label = tkinter.Label(self.root.frame, text="not running", font=("Comics Sans", 12), fg="black")
         self.root.frame.label.grid(column=0, row=4, sticky='ewn', padx=5, pady=5, columnspan=1)
 
-        global ELAPSED_TIME, COOLDOWN
-        self.elapsed_str = tkinter.StringVar()
-        self.elapsed_str.set("cooldown left: " + str(COOLDOWN - ELAPSED_TIME))
-        self.root.frame.ctn_label = tkinter.Label(self.root.frame, textvariable=self.elapsed_str, font=("Comics Sans", 12), fg="blue")
+        self.subtext_str = tkinter.StringVar()
+        self.subtext_str.set("by Oscar & Jason of SpookyTF")
+        self.root.frame.ctn_label = tkinter.Label(self.root.frame, textvariable=self.subtext_str, font=("Comics Sans", 10), fg="orange", bg="black")
         self.root.frame.ctn_label.grid(column=0, row=5, sticky='ews', padx=5, pady=5, columnspan=1)
 
         self.root.frame.button = tkinter.Button(self.root.frame, text="start", command=self.start, font=("Comics Sans", 14), fg="green", state="disabled")
         self.root.frame.button.grid(column=3, row=4, sticky='ewn', padx=5, pady=5, columnspan=2)
+
+        #global DELAY_RANGE
+        #self.root.frame.delay_scale = tkinter.Scale(self.root.frame, from_=0, to=360, orient=tkinter.HORIZONTAL, label="delay range (s)", font=("Comics Sans", 12), fg="orange", bg="black", length=200, variable=DELAY_RANGE, command=self.update_delay_range)
+        #self.root.frame.delay_scale.grid(column=0, row=6, sticky='ews', padx=5, pady=5, columnspan=4)
 
         if os.getenv('LOGIN_COOKIE') is not None:
             self.root.frame.label = tkinter.Label(self.root.frame, text="cookie found, log in!", font=("Comics Sans", 12), fg="green")
@@ -151,7 +160,15 @@ class GUI(threading.Thread):
         self.root.frame.login_button["fg"] = "black"
         self.root.frame.button["state"] = "disabled"
         self.root.frame.login_button["state"] = "disabled"
-        self.buy_listener.init_selenium_and_login()
+        try:
+            self.buy_listener.init_selenium_and_login()
+        except:
+            self.root.frame.label["text"] = "login failed"
+            self.root.frame.label["fg"] = "red"
+            self.root.frame.login_button["text"] = "❌ not logged in"
+            self.root.frame.login_button["state"] = "normal"
+            self.root.frame.button["state"] = "disabled"
+            return
         if os.getenv('LOGIN_COOKIE') is not None:
             self.root.frame.label["text"] = "logged in!"
             self.root.frame.login_button["text"] = "✅ logged in"
@@ -187,8 +204,13 @@ class GUI(threading.Thread):
         for widget in self.root.frame.winfo_children():
             widget.destroy()
         self.root.destroy()
-        self.buy_listener.stop()
+        if self.buy_listener is not None:
+            self.buy_listener.stop()
         exit(0)
+
+    def update_delay_range(self):
+        global DELAY_RANGE
+        self.buy_listener.delayed_passthrough["delay_range"] = DELAY_RANGE.get()
 
     # ---------------- DEBUG FUNCTION  ---------------- #
     def testing_spam_logs(self, n=100):
@@ -229,7 +251,9 @@ def main():
     # ---------------- pass data to buy_listener ---------------- #
     worker = BuyListener(logging, pika_host, pika_port, pika_username, pika_password, config['RABBITMQ']['queue'], int(config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
     myGUI = GUI(worker)
-    worker.delayed_passthrough(myGUI.elapsed_str)
+    worker.delayed_passthrough('subtext_str', myGUI.subtext_str)
+    global DELAY_RANGE
+    DELAY_RANGE = int(config['TIMES']['delay_range'])
 
 
 if __name__ == "__main__":

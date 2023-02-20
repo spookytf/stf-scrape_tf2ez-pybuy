@@ -17,10 +17,14 @@ global LAST_TIME
 LAST_TIME = -1
 global DELAY_RANGE
 DELAY_RANGE = 15
-global COOLDOWN
-COOLDOWN = 0
-global ELAPSED_STR
-ELAPSED_STR = None
+
+global PROFIT, ITEMS_BOUGHT, ITEMS_MISSED
+PROFIT = 0
+ITEMS_BOUGHT = 0
+ITEMS_MISSED = 0
+
+global GUI_OBJECTS
+GUI_OBJECTS = {}
 
 from sys import platform
 
@@ -64,12 +68,12 @@ def buy_item_by_id(item_id, item_price, item_hash_name):
         }
 
 
-global ITEMS
-ITEMS = []
+#global ITEMS
+#ITEMS = []
 
 def callback(ch, method, properties, body):
-    global LAST_TIME
-    logging.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
+    global DELAY_RANGE, PROFIT, ITEMS_BOUGHT, ITEMS_MISSED
+    # logging.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
     message_dict = json.loads(body)
     item_hash_name = message_dict['item_hash_name']
     item_id = message_dict['item_id']
@@ -92,70 +96,93 @@ def callback(ch, method, properties, body):
     # calculate profit
     profit = sell_usd - buy_usd
 
-    global ITEMS
+    #global ITEMS
     # base case: if list is empty
-    if not len(ITEMS):
-        ITEMS.append({
-            'profit': profit,
-            'item': message_dict,
-        })
-        logging.debug(f"({item_hash_name}) - Profit: ${profit}.")
-
-    # insert sorted by profit
-    for index, item in enumerate(ITEMS):
-        if item['profit'] < profit:
-            ITEMS.insert(index, {
-                'profit': profit,
-                'item': message_dict,
-            })
-            break
+    # if not len(ITEMS):
+    #     ITEMS.append({
+    #         'profit': profit,
+    #         'item': message_dict,
+    #     })
+    #     logging.debug(f"({item_hash_name}) - Profit: ${profit}.")
+    #
+    # # insert sorted by profit
+    # for index, item in enumerate(ITEMS):
+    #     if item['profit'] < profit:
+    #         ITEMS.insert(index, {
+    #             'profit': profit,
+    #             'item': message_dict,
+    #         })
+    #         break
 
     # if we've elapsed the cooldown time, buy the best item.
     # TODO: what if this item is already gone by the time we finish our cooldown? @Osc44r
-    global COOLDOWN, DELAY_RANGE
-    if(time.time() - LAST_TIME > COOLDOWN):
-        rand_delay = random.randint(0, DELAY_RANGE)
-        logging.debug("rand_delay: " + str(rand_delay) + " seconds")
-        COOLDOWN = rand_delay
-        logging.info("COOLDOWN: " + str(COOLDOWN) + " seconds")
+    #       this is a FATAL flaw... I'm refactoring.
+    #global COOLDOWN, DELAY_RANGE
+    #if(time.time() - LAST_TIME > COOLDOWN):
 
-        # select the first item in the list (most profit) (sorted above)
-        item_id = ITEMS[0]['item']['item_id']
-        item_hash_name = ITEMS[0]['item']['item_hash_name']
-        buy_usd = ITEMS[0]['item']['buy_prices']['usd']
+    rand_delay = random.randint(0, DELAY_RANGE)
+    logging.debug("rand_delay: " + str(rand_delay) + " seconds")
+    time.sleep(rand_delay)
+    #COOLDOWN = rand_delay
+    #logging.info("COOLDOWN: " + str(COOLDOWN) + " seconds")
 
-        # remove the item from the list
-        ITEMS.pop(0)
+    # select the first item in the list (most profit) (sorted above)
+    #item_id = ITEMS[0]['item']['item_id']
+    #item_hash_name = ITEMS[0]['item']['item_hash_name']
+    #buy_usd = ITEMS[0]['item']['buy_prices']['usd']
 
-        # input(f"Buy some shit? Profit: ${profit} -- hit enter to continue...")  # TODO: remove this
-        status = buy_item_by_id(item_id, buy_usd, item_hash_name)
+    # remove the item from the list
+    #ITEMS.pop(0)
 
-        # wait(5) #TODO: stupid
+    # input(f"Buy some shit? Profit: ${profit} -- hit enter to continue...")  # TODO: remove this
+    status = buy_item_by_id(item_id, buy_usd, item_hash_name)
 
-        if not status['success']:
-            logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
-        else:
-            logging.info(f"({item_hash_name}) - item bought successfully.")
+    # wait(5) #TODO: stupid
 
-        LAST_TIME = float(time.time())
-
-        # Discord notification there
-        webhook = discord_webhook.DiscordWebhook(url=os.getenv("DISCORD_WEBHOOK_URL"),
-                                                 content=f"({item_hash_name}) - {status['message']}")
-        webhook.execute()
-
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-
+    if not status['success']:
+        logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
+        ITEMS_MISSED = ITEMS_MISSED + 1
+        webhook = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - N/A", description=f"{status['message']}", color='ff0000')
     else:
-        global ELAPSED_TIME, ELAPSED_STR
-        ELAPSED_TIME = COOLDOWN - LAST_TIME
+        logging.info(f"({item_hash_name}) - item bought successfully.")
+        PROFIT = PROFIT + profit
+        ITEMS_BOUGHT = ITEMS_BOUGHT + 1
+        webhook = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - ${profit:.2f} net",
+                                                      description=f"{status['message']}", color='43cf3c')
 
-    if ELAPSED_STR is not None:
-        ELAPSED_STR.set("cooldown left: " + str(COOLDOWN - ELAPSED_TIME))
+    # update GUI component (maybe)
+    #global GUI_OBJECTS
+    #GUI_OBJECTS['subtext_str'].set(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
+    #GUI_OBJECTS['subtext_str'].config(textvariable=GUI_OBJECTS['subtext_str'])
+    logging.critical(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
+
+    # Discord notification ... above & below
+    webhook.set_author(name="the ghost of gambling", url="https://rat.church",
+                       icon_url="https://i.imgur.com/In7Urki.jpg")
+    webhook.set_footer(text="END (or start?) GAMBLING NOW", icon_url="https://i.imgur.com/6Oqrqsi.jpg",
+                       url="https://rat.church")
+    webhook.set_timestamp()
+    webhook.add_inline_field(name="Items bought", value=f"{ITEMS_BOUGHT}")
+    webhook.add_inline_field(name="Items missed", value=f"{ITEMS_MISSED}")
+    webhook.add_field(name="PROFIT THIS SESSION", value=f"${PROFIT:.2f}")
+    webhook.add_field(name="Total items", value=f"{ITEMS_BOUGHT + ITEMS_MISSED}")
+    webhook.add_field(name="Profit per item", value=f"${PROFIT / (ITEMS_BOUGHT + ITEMS_MISSED):.2f}")
+
+    webhook.execute()
+
+    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    #else:
+        #global ELAPSED_TIME, ELAPSED_STR
+        #ELAPSED_TIME = COOLDOWN - LAST_TIME
+
+    #if ELAPSED_STR is not None:
+        #ELAPSED_STR.set("cooldown left: " + str(COOLDOWN - ELAPSED_TIME))
 
 
 
 class BuyListener:
+    # constructor passthrough configuration items
     channel = None
     config = None
     connection = None
@@ -189,9 +216,9 @@ class BuyListener:
 
             self.main()
 
-    def delayed_passthrough(self, elapsed_str):
-        global ELAPSED_STR
-        ELAPSED_STR = elapsed_str
+    def delayed_passthrough(self, name, object):
+        global GUI_OBJECTS
+        GUI_OBJECTS[name] = object
 
     def init_selenium_and_login(self):
         # ---------------- Configure Driver Options ---------------- #
@@ -280,6 +307,5 @@ class BuyListener:
             self.connection.close()
         if self.channel is not None :
             self.channel.stop_consuming()
-        global driver
         if driver is not None:
             driver.quit()
