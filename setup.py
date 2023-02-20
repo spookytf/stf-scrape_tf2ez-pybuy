@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, pybuild
 import __version__
 
 setup(
@@ -8,5 +8,7 @@ setup(
     author='Oskar Stasiak, Jason McElhenney',
     author_email='oscar@spooky.tf, jason@spooky.tf',
     url='https:gh.boo.tf/stf-scrape_tf2ez-pybuy',
-    packages=find_packages(exclude=())
+    packages=find_packages(exclude=()),
+    install_requires=["selenium", "setuptools", "python-dotenv", "pika", "undetected_chromedriver", "pipreqs", "pybuild", "pybuild[build]"],
+
 )

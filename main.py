@@ -1,3 +1,4 @@
+import buildenv
 import dotenv
 import os
 import configparser
@@ -38,6 +39,7 @@ pika_username = None
 pika_password = None
 pika_queue = None
 scrape_url = None
+login_method = None
 
 class TextHandler(logging.Handler):
     # This class allows you to log to a Tkinter Text or ScrolledText widget
@@ -131,9 +133,11 @@ class GUI(threading.Thread):
 
         # ---------------- END GUI ---------------- #
 
-        if not os.path.exists("logs/tf2ez_pybuy.log"):
-            pathlib.Path("logs").mkdir(parents=True, exist_ok=True)
-            pathlib.Path("logs/tf2ez_pybuy.log").touch()
+        # create log file if it doesn't exist
+        if not os.path.exists("logs"):
+            if not os.path.exists("logs/tf2ez_pybuy.log"):
+                pathlib.Path("logs").mkdir(parents=True, exist_ok=True)
+                pathlib.Path("logs/tf2ez_pybuy.log").touch()
 
         # clear if log is too big
         # if fs := os.path.getsize("logs/tf2ez_pybuy.log.old") > 1000000:
@@ -227,8 +231,25 @@ class GUI(threading.Thread):
                 logging.critical("test")
 def main():
     # ---------------- Load variables ---------------- #
+    # if(os.getenv('BUILDING') is None or os.getenv('BUILDING') < 1):
+    #     config = configparser.ConfigParser()
+    #     config.read('config.ini')
+    # else:
+    #     lg_meth = "steam"
+    #     if pathlib.Path("tf2ez_pybuy.log").exists():
+    #         # this means it is not the first execution ... i guess
+    #         lg_meth = "cookie"
+    #     config = buildenv.get_ini_env(lg_meth)
+
+    config_path = pathlib.Path(__file__).parent.absolute() / "config.ini"
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read(config_path)
+
+    pika_queue = config['RABBITMQ']['queue']
+    scrape_url = config['SCRAPE']['url']
+    delay_range = config['TIMES']['delay_range']
+    login_method = config['LOGIN']['method']
+
     dotenv.load_dotenv()
 
     # ---------------- Configure RabbitMQ ---------------- #
@@ -238,8 +259,12 @@ def main():
     pika_password = os.getenv("PIKA_PASSWORD")
 
     # ---------------- Configure logging ---------------- #
+    logs_path = "logs/tf2ez_pybuy.log"
+    if not os.path.exists("logs"):
+        logs_path = "tf2ez_pybuy.log"
+
     logging.basicConfig(level=os.getenv("LOG_LEVEL") if os.getenv("LOG_LEVEL") is not None else logging.INFO,
-                        filename="logs/tf2ez_pybuy.log",
+                        filename=logs_path,
                         format='%(levelname)s %(asctime)s - %(message)s',
                         datefmt='%d %m %y %H:%M:%S')
     logging.getLogger('urllib3').setLevel(logging.WARNING)
@@ -248,9 +273,9 @@ def main():
 
     # colored logging configuration
     coloredlogs.install()
-    
+
     # ---------------- pass data to buy_listener ---------------- #
-    worker = BuyListener(logging, pika_host, pika_port, pika_username, pika_password, config['RABBITMQ']['queue'], int(config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
+    worker = BuyListener(logging, pika_host, pika_port, pika_username, pika_password, pika_queue, int(delay_range), scrape_url, login_method)
     myGUI = GUI(worker)
     worker.delayed_passthrough('subtext_str', myGUI.subtext_str)
     global DELAY_RANGE
