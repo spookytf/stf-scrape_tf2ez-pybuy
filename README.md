@@ -12,6 +12,7 @@ To use stf-scrape_tf2ez-pybuy, you must have the following:
 - An active account on tf2easy.com
 - A rabbitmq instance to connect to
 - A user on that instance with username and password
+- A Discord text channel with webhook link
 
 ## Installation
 
@@ -36,7 +37,9 @@ PIKA_PORT=
 PIKA_USERNAME=
 PIKA_PASSWORD=
 LOGIN_COOKIE=
+WEBHOOK_LINK=
 ```
+
 If you have any questions or require further assistance, please feel free to contact the project owner.
 
 [![banner-logo](https://user-images.githubusercontent.com/16076573/192673098-48467c36-2d96-43ca-bc02-5ec993989ceb.gif)](https://spooky.tf/)    
