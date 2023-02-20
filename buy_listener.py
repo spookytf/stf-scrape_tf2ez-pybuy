@@ -70,13 +70,21 @@ def buy_item_by_id(item_id, item_price, item_hash_name):
 
 #global ITEMS
 #ITEMS = []
+discord_webhook_link = os.getenv("WEBHOOK_LINK")
+webhook = discord_webhook.DiscordWebhook(url=discord_webhook_link)
 
+checked_list = []
 def callback(ch, method, properties, body):
     global DELAY_RANGE, PROFIT, ITEMS_BOUGHT, ITEMS_MISSED
     # logging.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
     message_dict = json.loads(body)
     item_hash_name = message_dict['item_hash_name']
     item_id = message_dict['item_id']
+
+    # if item_id in checked_list: return
+
+    checked_list.append(item_id)
+    if len(checked_list) == 80: checked_list.pop(0)
 
     buy_prices = message_dict['buy_prices']
     buy_usd = buy_prices['usd']
@@ -142,12 +150,12 @@ def callback(ch, method, properties, body):
     if not status['success']:
         logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
         ITEMS_MISSED = ITEMS_MISSED + 1
-        webhook = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - N/A", description=f"{status['message']}", color='ff0000')
+        embed = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - N/A", description=f"{status['message']}", color='ff0000')
     else:
         logging.info(f"({item_hash_name}) - item bought successfully.")
         PROFIT = PROFIT + profit
         ITEMS_BOUGHT = ITEMS_BOUGHT + 1
-        webhook = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - ${profit:.2f} net",
+        embed = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - ${profit:.2f} net",
                                                       description=f"{status['message']}", color='43cf3c')
 
     # update GUI component (maybe)
@@ -157,18 +165,19 @@ def callback(ch, method, properties, body):
     logging.critical(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
 
     # Discord notification ... above & below
-    webhook.set_author(name="the ghost of gambling", url="https://rat.church",
+    embed.set_author(name="the ghost of gambling", url="https://rat.church",
                        icon_url="https://i.imgur.com/In7Urki.jpg")
-    webhook.set_footer(text="END (or start?) GAMBLING NOW", icon_url="https://i.imgur.com/6Oqrqsi.jpg",
+    embed.set_footer(text="END (or start?) GAMBLING NOW", icon_url="https://i.imgur.com/6Oqrqsi.jpg",
                        url="https://rat.church")
-    webhook.set_timestamp()
-    webhook.add_inline_field(name="Items bought", value=f"{ITEMS_BOUGHT}")
-    webhook.add_inline_field(name="Items missed", value=f"{ITEMS_MISSED}")
-    webhook.add_field(name="PROFIT THIS SESSION", value=f"${PROFIT:.2f}")
-    webhook.add_field(name="Total items", value=f"{ITEMS_BOUGHT + ITEMS_MISSED}")
-    webhook.add_field(name="Profit per item", value=f"${PROFIT / (ITEMS_BOUGHT + ITEMS_MISSED):.2f}")
+    embed.set_timestamp()
+    embed.add_embed_field(name="Items bought", value=f"{ITEMS_BOUGHT}",inline=True)
+    embed.add_embed_field(name="Items missed", value=f"{ITEMS_MISSED}",inline=True)
+    embed.add_embed_field(name="PROFIT THIS SESSION", value=f"${PROFIT:.2f}")
+    embed.add_embed_field(name="Total items", value=f"{ITEMS_BOUGHT + ITEMS_MISSED}")
+    embed.add_embed_field(name="Profit per item", value=f"${PROFIT / (ITEMS_BOUGHT + ITEMS_MISSED):.2f}")
 
-    webhook.execute()
+    webhook.add_embed(embed=embed)
+    webhook.execute(remove_embeds=True)
 
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -178,8 +187,6 @@ def callback(ch, method, properties, body):
 
     #if ELAPSED_STR is not None:
         #ELAPSED_STR.set("cooldown left: " + str(COOLDOWN - ELAPSED_TIME))
-
-
 
 class BuyListener:
     # constructor passthrough configuration items

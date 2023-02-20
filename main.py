@@ -11,7 +11,7 @@ import tkinter.scrolledtext as ScrolledText
 
 from buy_listener import BuyListener
 
-__version__ = "v1.6.0" # update this when you update the version in setup.py
+__version__ = "v1.6.1" # update this when you update the version in setup.py
 
 global LAST_TIME
 LAST_TIME = float(time.time())
@@ -31,13 +31,13 @@ LOG_COLOR_LEVEL_TO_COLOR = {
     'CRITICAL': 'red',
 }
 
-config = None;
-pika_host = None;
-pika_port = None;
-pika_username = None;
-pika_password = None;
-pika_queue = None;
-scrape_url = None;
+config = None
+pika_host = None
+pika_port = None
+pika_username = None
+pika_password = None
+pika_queue = None
+scrape_url = None
 
 class TextHandler(logging.Handler):
     # This class allows you to log to a Tkinter Text or ScrolledText widget
@@ -248,6 +248,7 @@ def main():
 
     # colored logging configuration
     coloredlogs.install()
+    
     # ---------------- pass data to buy_listener ---------------- #
     worker = BuyListener(logging, pika_host, pika_port, pika_username, pika_password, config['RABBITMQ']['queue'], int(config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
     myGUI = GUI(worker)
