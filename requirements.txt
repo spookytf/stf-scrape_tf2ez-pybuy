@@ -3,3 +3,6 @@ python-dotenv==0.21.1
 selenium==4.8.2
 setuptools==45.2.0
 undetected_chromedriver==2.1.1
+tkextrafont==0.6.3
+coloredlogs==15.0
+Pillow~=9.4.0
