@@ -16,7 +16,7 @@ import multiprocessing
 from buy_listener import BuyListener
 from ReportGUI import ReportGUI
 
-__version__ = "v2.6.9" # update this when you update the version in setup.py
+__version__ = "v2.6.9-nice" # update this when you update the version in setup.py
 
 
 # ---------------- START CONFIG ---------------- #
@@ -115,8 +115,6 @@ class ResizeHandler(threading.Thread):
         # that is using grid... NOT ANYTHING ELSE!
 
 
-        self.thread.start()
-
     def stop(self):
         self.thread.join() # wait for it to finish very nicely
 
@@ -164,12 +162,15 @@ class ResizeHandler(threading.Thread):
         # TODO: no idea if this will work with the way mainloop is handled
         self.window.bind("<Configure>", self.on_resize)
 
+logging.getLogger(__name__).setLevel(logging.DEBUG)
+
 class TextHandler(logging.Handler):
     # This class allows you to log to a Tkinter Text or ScrolledText widget
     # Adapted from Moshe Kaplan: https://gist.github.com/moshekaplan/c425f861de7bbf28ef06
 
     def __init__(self, text):
         # run the regular Handler __init__
+        logger = logging.getLogger(__name__)
         logging.Handler.__init__(self)
         #logging.getLogger().addHandler(logging.Handler)
 
@@ -197,6 +198,8 @@ class TextHandler(logging.Handler):
         # This is necessary because we can't modify the Text from other threads
         self.text.after(0, append)
 
+# ----------------------------------------------------------- #
+
 class GUI(threading.Thread):
     buyListener = None
     textHandler = None
@@ -208,7 +211,9 @@ class GUI(threading.Thread):
     def set_worker(self, worker, text_handler):
         self.buyListener = worker
         self.textHandler = text_handler
-        logging.addHandler(text_handler)
+        logger = logging.getLogger(__name__)
+        logger.addHandler(text_handler)
+        logger.setLevel("DEBUG")
 
 
     # ---------------- START GUI ---------------- #
@@ -219,14 +224,15 @@ class GUI(threading.Thread):
         # self.root.wm_title("SPOOKYSCRAPE TF2EZ PYBUY" + " " + __version__)
         self.root.title("SPOOKYSCRAPE TF2EZ PYBUY" + " " + __version__)
         #self.root.option_add("*Font", (SPOOKY_FONT))
-        self.root.geometry("800x500")
+        self.root.geometry("800x550")
         self.root.resizable(False, True)
-        self.root.minsize(800, 500)
-        self.root.configure(background="black", bg="black")
+        self.root.minsize(800, 550)
+        self.root.configure(background="black")
         self.root.iconbitmap(pathlib.Path("assets/img/logo/spookyscrape.ico"))
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        logging.getLogger().addHandler(self.textHandler)
+        logger = logging.getLogger(__name__)
+        logger.addHandler(self.textHandler)
 
         self.root.frame = tkinter.Frame(self.root, highlightcolor="#bfbfbf", bg="#1b1b1b", relief="sunken", borderwidth=2)
         self.root.frame.grid(row=0, column=0, sticky='ewsn')
@@ -286,7 +292,7 @@ class GUI(threading.Thread):
         # Create textLogger
         text_handler = TextHandler(st)
         self.textHandler = text_handler
-        logging.getLogger().addHandler(text_handler)
+        logging.getLogger(__name__).addHandler(text_handler)
 
         if not os.path.exists("logs/tf2ez_pybuy.log"):
             pathlib.Path("logs").mkdir(parents=True, exist_ok=True)
@@ -298,13 +304,13 @@ class GUI(threading.Thread):
 
         # Add the handler to logger
         # MANAGER.getLogger('tf2ez_pybuy_combined').setLevel(gui).addHandler(text_handler);
-        # logger.addHandler(text_handler)
-        # logger.addHandler(logging.FileHandler(pathlib.Path("logs/combined_" + str(time.time()) + ".log"), "a", "utf-8", True, "DEBUG"))
+        logger.addHandler(text_handler)
+        logger.addHandler(logging.FileHandler(pathlib.Path("logs/combined_" + str(time.time()) + ".log"), "a", "utf-8", True, "DEBUG"))
         # shouldn't ever actually "append"
 
 
         self.root.frame.grid(row=0, column=0, sticky='news', padx=5, pady=5)
-        # self.root.pack_propagate(True)
+        self.root.pack_propagate(True)
         #self.root.frame.pack(fill="x", expand = True,  pady=10, padx=10)
         #self.root.frame.pack(fill="both", expand=True)
 
@@ -360,11 +366,9 @@ class GUI(threading.Thread):
 
 
     def login(self):
-        threading.Thread(target=self.login_thread).start()
+        threading.Thread(target=self.login_thread).run()
 
     def login_thread(self):
-        logging.getLogger().addHandler(self.textHandler)
-
         self.root.frame.label["text"] = "logging in..."
         self.root.frame.login_button["text"] = "logging in..."
         self.root.frame.login_button["fg"] = "black"
@@ -410,6 +414,7 @@ class GUI(threading.Thread):
 
     def start(self):
         self.thread = threading.Thread(target=self.thread_func)
+        self.run()
         #self.thread.start()
 
     def thread_func(self):
@@ -467,8 +472,8 @@ class GUI(threading.Thread):
             elif i % 5 == 4:
                 logging.critical("test")
 
-def throw_exception(self):
-    raise IOError("test", "lots of testing")
+    def throw_exception(self):
+        raise IOError("test", "lots of testing")
 def main():
     # ---------------- Load variables ---------------- #
     config = configparser.ConfigParser()
@@ -503,16 +508,22 @@ def main():
     #                            logging.FileHandler('logs/tf2ez_pybuy.log', 'a'),
     #                            logging.FileHandler('logs/combined_' + str(time.time_ns()) + '.log', 'w')])
 
+    myGUI = GUI()
+
     logging.basicConfig(level=logging.DEBUG    ,
                         filename="logs/tf2ez_pybuy.log",
                         format='%(levelname)s %(asctime)s - %(message)s',
                         datefmt='%d %m %y %H:%M:%S')
 
-    logging.getLogger('urllib3').setLevel("DEBUG")
-    logging.getLogger('selenium').setLevel("DEBUG")
-    logging.getLogger('undetected_chromedriver').setLevel("DEBUG")
+    logging.getLogger().addHandler(myGUI.textHandler)
 
-    coloredlogs.install(level="DEBUG")
+    logging.getLogger('urllib3').setLevel("DEBUG").addHandler(myGUI.textHandler)
+    logging.getLogger('selenium').setLevel("DEBUG").addHandler(myGUI.textHandler)
+    logging.getLogger('undetected_chromedriver').setLevel("DEBUG").addHandler(myGUI.textHandler)
+
+    coloredlogs.auto_install()
+
+    logging.getLogger(__name__).addHandler(myGUI.textHandler)
     
     # ---------------- pass data to buyListener ---------------- #
     global DELAY_RANGE
@@ -523,11 +534,8 @@ def main():
 
     # ---------------- Start GUI && worker ---------------- #
 
-    myGUI = GUI()
-    global GUI_OBJECTS
-    GUI_OBJECTS['textHandler'] = myGUI.textHandler
     worker = BuyListener(pika_host, pika_port, pika_username, pika_password, config['RABBITMQ']['queue'], int(config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
-    myGUI.set_vals(worker)
+    myGUI.set_vals(worker, myGUI.text_handler)
     #worker.delayed_passthrough('textHandler', myGUI.textHandler)
     worker.delayed_passthrough('subtext_str', myGUI.subtext_str)
 
@@ -544,9 +552,7 @@ def handler(signum, frame):
 
 
 if __name__ == "__main__":
-
-        signal.signal(signal.SIGINT, handler)
-        signal.signal(signal.SIGTERM, handler)
+        # signal.signal(signal.SIGINT, handler)
         main()
 
 

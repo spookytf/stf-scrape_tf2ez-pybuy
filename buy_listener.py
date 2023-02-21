@@ -209,25 +209,25 @@ def callback(ch, method, properties, body):
         #ELAPSED_STR.set("cooldown left: " + str(COOLDOWN - ELAPSED_TIME))
 
  # https://stackoverflow.com/a/63625977
-# def get_browser_log_entries(driver):
-#     """get log entreies from selenium and add to python logger before returning"""
-#     loglevels = { 'NOTSET':0 , 'DEBUG':10 ,'INFO': 20 , 'WARNING':30, 'ERROR':40, 'SEVERE':40, 'CRITICAL':50}
-#
-#     #initialise a logger
-#     browserlog = logging.getLogger("tf2ez")
-#     #get browser logs
-#     slurped_logs = driver.get_log('browser')
-#     for entry in slurped_logs:
-#         #convert broswer log to python log format
-#         rec = browserlog.makeRecord("%s.%s"%(browserlog.name,entry['source']),loglevels.get(entry['level']),'.',0,entry['message'],None,None)
-#         rec.created = entry['timestamp'] /1000 # log using original timestamp.. us -> ms
-#         try:
-#             #add browser log to python log
-#             browserlog.handle(rec)
-#         except:
-#             print(entry)
-#     #and return logs incase you want them
-#     return slurped_logs
+def get_browser_log_entries(driver):
+    """get log entreies from selenium and add to python logger before returning"""
+    loglevels = { 'NOTSET':0 , 'DEBUG':10 ,'INFO': 20 , 'WARNING':30, 'ERROR':40, 'SEVERE':40, 'CRITICAL':50}
+
+    #initialise a logger
+    browserlog = logging.getLogger("tf2ez")
+    #get browser logs
+    slurped_logs = driver.get_log('browser')
+    for entry in slurped_logs:
+        #convert broswer log to python log format
+        rec = browserlog.makeRecord("%s.%s"%(browserlog.name,entry['source']),loglevels.get(entry['level']),'.',0,entry['message'],None,None)
+        rec.created = entry['timestamp'] /1000 # log using original timestamp.. us -> ms
+        try:
+            #add browser log to python log
+            browserlog.handle(rec)
+        except:
+            print(entry)
+    #and return logs incase you want them
+    return slurped_logs
 
 
 class BuyListener:
@@ -265,21 +265,21 @@ class BuyListener:
 
             self.main()
 
-    def delayed_passthrough(self, name, obj, callback=None):
-        global GUI_OBJECTS
-        GUI_OBJECTS[name] = obj
-
-        if name == 'textHandler':
-            self.text_handler = obj
-
-        if name == 'subtext_str':
-            GUI_OBJECTS['subtext_str'].set(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
-            GUI_OBJECTS['subtext_str'].config(textvariable=GUI_OBJECTS['subtext_str'])
-
-        if callback is not None:
-            callback([name, obj])
-        else:
-            return obj
+    # def delayed_passthrough(self, name, obj, callback=None):
+    #     global GUI_OBJECTS
+    #     GUI_OBJECTS[name] = obj
+    #
+    #     if name == 'textHandler':
+    #         self.text_handler = obj
+    #
+    #     if name == 'subtext_str':
+    #         GUI_OBJECTS['subtext_str'].set(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
+    #         GUI_OBJECTS['subtext_str'].config(textvariable=GUI_OBJECTS['subtext_str'])
+    #
+    #     if callback is not None:
+    #         callback([name, obj])
+    #     else:
+    #         return obj
 
     def init_selenium_and_login(self, login_method=None):
 
@@ -299,7 +299,6 @@ class BuyListener:
 
        # global GUI_OBJECTS
         #logging.addHandler(GUI_OBJECTS['textHandler'])
-
         # ---------------- Init Driver, then Login ---------------- #
 
         if not OS == "windows":
@@ -307,6 +306,8 @@ class BuyListener:
                 global driver
                 caps = uc.DesiredCapabilities.CHROME.copy()
                 caps['acceptInsecureCerts'] = True
+                caps['goog:loggingPrefs'] = {'browser': 'ALL'}
+
                 driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver"), desired_capabilities=caps)
             except:
                 logger.error("Couldn't find the default Google Chrome binaries. Perhaps you haven't installed Google "
@@ -319,6 +320,8 @@ class BuyListener:
                 exit(1)
         else:
             driver = uc.Chrome(options=options)
+
+            consolemsgs = get_browser_log_entries(driver)
 
         #TODO: intrigue
         #driver.add_virtual_authenticator()
@@ -341,10 +344,10 @@ class BuyListener:
             #       profile picture in the embed
             STEAM_USERNAME = os.getenv("STEAM_USERNAME")
             STEAM_AVATAR_TINYLINK = os.getenv("STEAM_AVATAR_TINYLINK")
-            
+
             if STEAM_USERNAME is None or STEAM_USERNAME == "":
                 STEAM_USERNAME = driver.find_element(By.CLASS_NAME, "OpenID_loggedInAccount").get_property("innerText")
-                logger.debug("STEAM_USERNAME = " + STEAM_USERNAME)    
+                logger.debug("STEAM_USERNAME = " + STEAM_USERNAME)
                 os.set_key('.env', 'STEAM_USERNAME', STEAM_USERNAME)
             if STEAM_AVATAR_TINYLINK is None or STEAM_AVATAR_TINYLINK == "":
                 STEAM_AVATAR_TINYLINK = driver.find_element(By.CSS_SELECTOR, "#openidForm > div > div.OpenID_UserContainer > div.playerAvatar.online > img").get_attribute("src")
@@ -390,25 +393,25 @@ class BuyListener:
         global DELAY_RANGE, GUI_OBJECTS
         DELAY_RANGE = self.delay_range
         start()
-       
+
 
     def start(self):
-        logger = logging.getLogger(__name__ + "_rabbitmq").setLevel(logging.DEBUG)
+        logger = logging.getLogger("rabbitmq").setLevel("DEBUG")
         logger.addHandler(text_handler)
-        # _EARLY_LOG_HANDLER = logging.StreamHandler(sys.stdout)
-        # log = logging.getLogger()
-        # log.addHandler(_EARLY_LOG_HANDLER)
-        # if level is not None:
-        #     log.setLevel(level)
-        #
-        # _EARLY_ERR_HANDLER = logging.StreamHandler(sys.stderr)
-        # log = logging.getLogger()
-        # log.addHandler(_EARLY_LOG_HANDLER)
-        # if level is not None:
-        #     log.setLevel(level)
-        #
-        # _EARLY_LOG_HANDLER.setLevel(logging.getLogger().level)
-        # _EARLY_ERR_HANDLER.setLevel(logging.getLogger().level)
+        _EARLY_LOG_HANDLER = logging.StreamHandler(sys.stdout)
+        log = logging.getLogger()
+        log.addHandler(_EARLY_LOG_HANDLER)
+        if level is not None:
+            log.setLevel(level)
+
+        _EARLY_ERR_HANDLER = logging.StreamHandler(sys.stderr)
+        log = logging.getLogger()
+        log.addHandler(_EARLY_LOG_HANDLER)
+        if level is not None:
+            log.setLevel(level)
+
+        _EARLY_LOG_HANDLER.setLevel(logging.getLogger().level)
+        _EARLY_ERR_HANDLER.setLevel(logging.getLogger().level)
         # ---------------- Start listening for messages ---------------- #
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(host=self.pika_host, port=self.pika_port, credentials=pika.PlainCredentials(self.pika_username, self.pika_password)))
