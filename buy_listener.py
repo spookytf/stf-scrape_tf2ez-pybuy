@@ -77,7 +77,8 @@ checked_list = []
 def callback(ch, method, properties, body):
     global DELAY_RANGE, PROFIT, ITEMS_BOUGHT, ITEMS_MISSED
     # logging.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
-    message_dict = json.loads(body)
+    # message_dict = json.loads(body)
+    message_dict = body
     item_hash_name = message_dict['item_hash_name']
     item_id = message_dict['item_id']
 
@@ -145,7 +146,7 @@ def callback(ch, method, properties, body):
     # input(f"Buy some shit? Profit: ${profit} -- hit enter to continue...")  # TODO: remove this
     status = buy_item_by_id(item_id, buy_usd, item_hash_name)
 
-    # wait(5) #TODO: stupid
+    # wait(5)
 
     if not status['success']:
         logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
@@ -236,9 +237,9 @@ class BuyListener:
         # ---------------- Init Driver, then Login ---------------- #
         global driver
         if not OS == "windows":
+            caps = uc.DesiredCapabilities.CHROME.copy()
+            caps['acceptInsecureCerts'] = True
             try:
-                caps = uc.DesiredCapabilities.CHROME.copy()
-                caps['acceptInsecureCerts'] = True
                 driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver"), desired_capabilities=caps)
 
             except:
@@ -251,7 +252,7 @@ class BuyListener:
                 input("Press any key to exit...")
                 exit(1)
         else:
-            driver = uc.Chrome(options=options)
+            driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver.exe"), desired_capabilities=caps)
 
         global wait
         wait = WebDriverWait(driver, 60)
