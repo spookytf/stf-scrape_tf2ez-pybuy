@@ -237,7 +237,10 @@ class BuyListener:
         global driver
         if not OS == "windows":
             try:
-                driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver"))
+                caps = uc.DesiredCapabilities.CHROME.copy()
+                caps['acceptInsecureCerts'] = True
+                driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver"), desired_capabilities=caps)
+
             except:
                 logging.error("Couldn't find the default Google Chrome binaries. Perhaps you haven't installed Google "
                               "Chrome?")
@@ -293,19 +296,17 @@ class BuyListener:
         DELAY_RANGE = self.delay_range
         logging.warning("Deal listener initialized.")
 
-
     def start(self):
         # ---------------- Start listening for messages ---------------- #
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(host=self.pika_host, port=self.pika_port, credentials=pika.PlainCredentials(self.pika_username, self.pika_password)))
         self.channel = self.connection.channel()
-
         self.channel.queue_declare(queue=self.pika_queue, durable=True)
-        self.channel.basic_qos(prefetch_count=1)
+        #self.channel.basic_qos(prefetch_count=1)
         self.channel.basic_consume(queue=self.pika_queue, on_message_callback=callback)
 
         # clear old deals so we don't waste time
-        self.channel.queue_purge(queue=self.pika_queue)
+        # self.channel.queue_purge(queue=self.pika_queue)
         logging.info("Waiting for messages...")
         self.channel.start_consuming()
 
