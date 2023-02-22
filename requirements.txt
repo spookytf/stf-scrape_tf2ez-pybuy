@@ -6,3 +6,4 @@ undetected_chromedriver==2.1.1
 tkextrafont==0.6.3
 coloredlogs==15.0
 Pillow~=9.4.0
+loguru==0.5.3

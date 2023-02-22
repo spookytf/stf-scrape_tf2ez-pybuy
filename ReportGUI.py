@@ -1,18 +1,18 @@
+import sys
+import logging as pylogger
+from loguru import logger
+import better_exceptions
+
+better_exceptions.MAX_LENGTH = None
 import configparser
-import logging
+import os
 import pathlib
 import threading
 import tkinter
 from itertools import count
-
-import coloredlogs
-from PIL import ImageTk, Image
-from tkinter import *
+from tkinter import Label
 from tkinter import messagebox
-from tkinter import filedialog
-import os
-from discord_webhook import DiscordWebhook, DiscordEmbed
-from datetime import datetime
+from PIL import ImageTk, Image
 
 
 # a small tkinter GUI for reporting logs after an execution has ended in an exception or otherwise.
@@ -68,7 +68,6 @@ class ImageLabel(Label):
 class ReportGUI(threading.Thread):
     webhook = None
     exception = None
-    logging = None
     response = None
     webhook_message = None
     embed = None
@@ -77,26 +76,10 @@ class ReportGUI(threading.Thread):
     root = None
     manager = None
 
-    def __init__(self, text_handler):
-        threading.Thread.__init__(self)
-        self.text_handler = text_handler
+    def __init__(self):
+        super().__init__()
         # if LUCKY
-        # exception.get_traceback()
-        # exception.get_exception()
-        # exception.get_exception_type()
-        # exception.get_exception_message()
 
-        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        coloredlogs.install(level='DEBUG', fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-        logging.getLogger(__name__).level = "DEBUG"
-        logging.getLogger("discord_webhook").level = "DEBUG" 
-        
-        logger = logging.getLogger(__name__)
-        logger.addHandler(text_handler)
-        logger = logging.getLogger("discord_webhook")
-        logger.addHandler(text_handler)
-                                               
         logger.info("ReportGUI initialized...")
 
         self.response = None
@@ -108,11 +91,21 @@ class ReportGUI(threading.Thread):
         self.read_configs()
 
         self.root = tkinter.Tk()
-        logger = logging.getLogger(__name__)
+        logger = pylogger.getLogger(__name__)
         logger.debug("Building GUI for report popup...")
         self.build()
         # THE INTENTION IS TO FREEZE THE MAIN THREAD HERE, AND ONLY UNFREEZE IT WHEN THE REPORT IS SENT
         self.logging.warning("GUI built, waiting for user to complete...")
+        # Not actively displayed yet, but built to appear.
+
+    def show(self):
+        self.root.pack_propagate(False)
+
+        self.root.mainloop()
+
+    def hide(self):
+        self.root.withdraw()
+        threading.Thread.join()
 
     def read_configs(self):
         config = configparser.ConfigParser()
@@ -229,7 +222,3 @@ class ReportGUI(threading.Thread):
 
         self.root.button = tkinter.Button(self.root.body, text="SEND", command=self.report, height=2)
         self.root.button.pack(side='bottom', fill='x', expand=False, padx=10, pady=10)
-
-        self.root.pack_propagate(False)
-
-        self.root.mainloop()

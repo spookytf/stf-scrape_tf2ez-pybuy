@@ -1,3 +1,6 @@
+import better_exceptions
+better_exceptions.MAX_LENGTH = None
+
 import pika
 import dotenv
 import os
@@ -6,15 +9,20 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import undetected_chromedriver as uc
+import selenium.webdriver.chrome as chromedriver
 from selenium import webdriver
 import discord_webhook
 import time as time
-import logging
 import json
 import random
 
+import logging as pylogger
+from loguru import logger as logger
+
 global platform
 
+global driver
+driver = None
 
 global STEAM_USERNAME
 STEAM_USERNAME = None
@@ -46,19 +54,12 @@ elif platform == "win32":
     OS = "windows"
 
 print(f"platform is {OS}")
-
-# handle logging
-
-logging = logging.getLogger("buyListener")
-MANAGER = logging.manager;
-
-
 def buy_item_by_id(item_id, item_price, item_hash_name):
     bot_inventory = driver.find_element(By.CLASS_NAME, "market-items")
     item_to_buy = bot_inventory.find_elements(By.XPATH, f"//div[@data-id={item_id}]")
 
     if len(item_to_buy) == 0:
-        logging.info(f"({item_hash_name}) - Cannot find this item in bot's inventory.")
+        logger.info(f"({item_hash_name}) - Cannot find this item in bot's inventory.")
         return {
             "success": False,
             "message": "There is no such item in bot's inventory"
@@ -71,7 +72,7 @@ def buy_item_by_id(item_id, item_price, item_hash_name):
             "message": f"You do not have enough wagered balance for this operation. [wagered balance: ${wagered_balance}, price: ${item_price}]."
         }
 
-        logging.info(f"({item_hash_name}) - Adding to cart.")
+        logger.info(f"({item_hash_name}) - Adding to cart.")
         item_to_buy[0].click()
         driver.find_element(By.ID, "buyItems").click()
         # TODO: we shouldn't assume the purchase was successful
@@ -90,8 +91,8 @@ CHECK_LIST_SIZE = 80
 checked_list = []
 def callback(ch, method, properties, body):
     global DELAY_RANGE, PROFIT, ITEMS_BOUGHT, ITEMS_MISSED
-    # logging.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
-    logging.debug(" [x] Received %r" % body)
+    # logger.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
+    logger.debug(" [x] Received %r" % body)
     message_dict = json.loads(body)
     item_hash_name = message_dict['item_hash_name']
     item_id = message_dict['item_id']
@@ -117,7 +118,7 @@ def callback(ch, method, properties, body):
     sell_keys = sell_prices['keys']
     sell_refs = sell_prices['refs']
 
-    logging.warning(f"({item_hash_name}) - Attempting to buy for ${buy_usd}.")
+    logger.warning(f"({item_hash_name}) - Attempting to buy for ${buy_usd}.")
 
     # calculate profit
     profit = sell_usd - buy_usd
@@ -129,7 +130,7 @@ def callback(ch, method, properties, body):
     #         'profit': profit,
     #         'item': message_dict,
     #     })
-    #     logging.debug(f"({item_hash_name}) - Profit: ${profit}.")
+    #     logger.debug(f"({item_hash_name}) - Profit: ${profit}.")
     #
     # # insert sorted by profit
     # for index, item in enumerate(ITEMS):
@@ -147,11 +148,11 @@ def callback(ch, method, properties, body):
     #if(time.time() - LAST_TIME > COOLDOWN):
 
     rand_delay = random.randint(0, DELAY_RANGE)
-    logging.debug("rand_delay: " + str(rand_delay) + " seconds")
-    logging.warning("Waiting " + str(rand_delay) + " seconds before buying...");
+    logger.debug("rand_delay: " + str(rand_delay) + " seconds")
+    logger.warning("Waiting " + str(rand_delay) + " seconds before buying...");
     time.sleep(rand_delay)
     #COOLDOWN = rand_delay
-    #logging.info("COOLDOWN: " + str(COOLDOWN) + " seconds")
+    #logger.info("COOLDOWN: " + str(COOLDOWN) + " seconds")
 
     # select the first item in the list (most profit) (sorted above)
     #item_id = ITEMS[0]['item']['item_id']
@@ -167,11 +168,11 @@ def callback(ch, method, properties, body):
     wait(5) #TODO: stupid
 
     if not status['success']:
-        logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
+        logger.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
         ITEMS_MISSED = ITEMS_MISSED + 1
         embed = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - N/A", description=f"{status['message']}", color='ff0000')
     else:
-        logging.info(f"({item_hash_name}) - item bought successfully.")
+        logger.info(f"({item_hash_name}) - item bought successfully.")
         PROFIT = PROFIT + profit
         ITEMS_BOUGHT = ITEMS_BOUGHT + 1
         embed = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - ${profit:.2f} net",
@@ -181,7 +182,7 @@ def callback(ch, method, properties, body):
     global GUI_OBJECTS
     GUI_OBJECTS['subtext_str'].set(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
     GUI_OBJECTS['subtext_str'].config(textvariable=GUI_OBJECTS['subtext_str'])
-    logging.critical(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
+    logger.critical(f"Profit: ${PROFIT:.2f} | Items bought: {ITEMS_BOUGHT} | Items missed: {ITEMS_MISSED}")
 
     # Discord notification ... above & below
     embed.set_author(name="the ghost of gambling", url="https://rat.church",
@@ -214,7 +215,7 @@ def get_browser_log_entries(driver):
     loglevels = { 'NOTSET':0 , 'DEBUG':10 ,'INFO': 20 , 'WARNING':30, 'ERROR':40, 'SEVERE':40, 'CRITICAL':50}
 
     #initialise a logger
-    browserlog = logging.getLogger("tf2ez")
+    browserlog = pylogger.getLogger("tf2ez")
     #get browser logs
     slurped_logs = driver.get_log('browser')
     for entry in slurped_logs:
@@ -243,7 +244,6 @@ class BuyListener:
     pika_username = None
     pika_password = None
     pika_queue = None
-    text_handler = None
 
     def __init__(self, pika_host, pika_port, pika_username, pika_password, pika_queue, delay_range, scrape_url, login_method):
         self.delay_range = delay_range
@@ -261,9 +261,7 @@ class BuyListener:
 
         if self.scrape_url is not None:
             if not scrape_url.endswith("/"):
-                scrape_url = scrape_url + "/"
-
-            self.main()
+                self.scrape_url = scrape_url + "/"
 
     # def delayed_passthrough(self, name, obj, callback=None):
     #     global GUI_OBJECTS
@@ -281,33 +279,25 @@ class BuyListener:
     #     else:
     #         return obj
 
-    def init_selenium_and_login(self, login_method=None):
-
-        logger = logging.getLogger(__name__)
-        logger.setLevel(os.getenv('log_level'))
-        logger.addHandler(self.text_handler)
-
-        if os.getenv("login_method") is ["steam", "cookie"]:
+    def init_selenium_and_login(self):
+        logger.warning("Initializing Selenium Webdriver, logging in...")
+        if os.getenv("login_method") is not None:
             login_method = os.getenv("login_method")
-        if login_method is None:
-            login_method = self.login_method # default to config.ini
-
+        else: # default to config.ini
+            login_method = self.login_method
         # ---------------- Configure Driver Options ---------------- #
-        options = Options()
+        options = webdriver.ChromeOptions()
+        options.headless = False
         options.add_argument("--ignore-certificate-errors")
         options.add_argument("--start-maximized")
-
-       # global GUI_OBJECTS
-        #logging.addHandler(GUI_OBJECTS['textHandler'])
+        #options.add_argument("--disable-extensions")
         # ---------------- Init Driver, then Login ---------------- #
+        caps = chromedriver.options.DesiredCapabilities.CHROME.copy()
+        caps['acceptInsecureCerts'] = True
+        #caps['goog:loggerPrefs'] = {'browser': 'ALL'}
 
-        if not OS == "windows":
+        if OS != "windows":
             try:
-                global driver
-                caps = uc.DesiredCapabilities.CHROME.copy()
-                caps['acceptInsecureCerts'] = True
-                caps['goog:loggingPrefs'] = {'browser': 'ALL'}
-
                 driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver"), desired_capabilities=caps)
             except:
                 logger.error("Couldn't find the default Google Chrome binaries. Perhaps you haven't installed Google "
@@ -319,9 +309,7 @@ class BuyListener:
                 input("Press any key to exit...")
                 exit(1)
         else:
-            driver = uc.Chrome(options=options)
-
-            consolemsgs = get_browser_log_entries(driver)
+             driver = uc.Chrome(options=options, executable_path=os.path.abspath("./chromedriver"), desired_capabilities=caps)
 
         #TODO: intrigue
         #driver.add_virtual_authenticator()
@@ -388,51 +376,60 @@ class BuyListener:
         # wait for market nav to load
         wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'new-item-info-holder')))
 
-    def main(self):
-        #self.init_selenium_and_login()
-        global DELAY_RANGE, GUI_OBJECTS
-        DELAY_RANGE = self.delay_range
-        start()
-
-
     def start(self):
-        logger = logging.getLogger("rabbitmq").setLevel("DEBUG")
-        logger.addHandler(text_handler)
-        _EARLY_LOG_HANDLER = logging.StreamHandler(sys.stdout)
-        log = logging.getLogger()
-        log.addHandler(_EARLY_LOG_HANDLER)
-        if level is not None:
-            log.setLevel(level)
+        logger.add("rabbitmq", level="DEBUG", colorize=True, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
+        # logger = logger.getLogger("rabbitmq").setLevel("DEBUG")
+        # logger.addHandler(text_handler)
+        # _EARLY_LOG_HANDLER = logger.StreamHandler(sys.stdout)
+        # log = logger.getLogger()
+        # log.addHandler(_EARLY_LOG_HANDLER)
+        # if level is not None:
+        #     log.setLevel(level)
+        #
+        # _EARLY_ERR_HANDLER = logger.StreamHandler(sys.stderr)
+        # log = logger.getLogger()
+        # log.addHandler(_EARLY_LOG_HANDLER)
+        # if level is not None:
+        #     log.setLevel(level)
+        #
+        # _EARLY_LOG_HANDLER.setLevel(logger.getLogger().level)
+        # _EARLY_ERR_HANDLER.setLevel(logger.getLogger().level)
 
-        _EARLY_ERR_HANDLER = logging.StreamHandler(sys.stderr)
-        log = logging.getLogger()
-        log.addHandler(_EARLY_LOG_HANDLER)
-        if level is not None:
-            log.setLevel(level)
+        # def get_selenium_log_entries(driver):
+        #     consolemsgs = get_browser_log_entries(driver)
+        #
+        # def print_selenium_log_entires( driver ):
+        #     logger.basicConfig(level=logger.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        #     logger = logger.getLogger("selenium").setLevel("DEBUG")
+        #     logger.addHandler(text_handler)
+        #     get_selenium_log_entries(driver)
 
-        _EARLY_LOG_HANDLER.setLevel(logging.getLogger().level)
-        _EARLY_ERR_HANDLER.setLevel(logging.getLogger().level)
         # ---------------- Start listening for messages ---------------- #
-        self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.pika_host, port=self.pika_port, credentials=pika.PlainCredentials(self.pika_username, self.pika_password)))
-        self.channel = self.connection.channel()
-        logger.info("Connected to RabbitMQ server: channel opened, declaring queue...")
+        logger.info("Starting to listen for messages...")
+        try:
+            self.connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=self.pika_host, port=self.pika_port, credentials=pika.PlainCredentials(self.pika_username, self.pika_password)))
+            self.channel = self.connection.channel()
+            logger.info("Connected to RabbitMQ server: channel opened, declaring queue...")
 
-        self.channel.queue_declare(queue=self.pika_queue, durable=True, auto_delete=False, exclusive=False)
-        logger.info("Queue declared...")
+            self.channel.queue_declare(queue=self.pika_queue, durable=True, auto_delete=False, exclusive=False)
+            logger.info("Queue declared...")
 
-        # TODO: Seemingly required... but why?
-        self.channel.confirm_delivery()
-        logger.info("confirm_delivery set...")
-        # self.channel.basic_qos(prefetch_count==0)
-        # logger.info("basic_qos set...")
-        self.channel.basic_consume(queue=self.pika_queue, on_message_callback=callback, auto_ack=True, durable=True, exclusive=False)
-        logger.info("basic_consume set up... now we must start consuming.")
+            # TODO: Seemingly required... but why?
+            self.channel.confirm_delivery()
+            logger.info("confirm_delivery set...")
+            # self.channel.basic_qos(prefetch_count==0)
+            # logger.info("basic_qos set...")
+            self.channel.basic_consume(queue=self.pika_queue, on_message_callback=callback, auto_ack=True, durable=True, exclusive=False)
+            logger.info("basic_consume set up... now we must start consuming.")
 
-        # clear old deals so we don't waste time
-        # self.channel.queue_purge(queue=self.pika_queue)
-        logger.warn("CONSUMING...")
-        self.channel.start_consuming()
+            # clear old deals so we don't waste time
+            # self.channel.queue_purge(queue=self.pika_queue)
+            logger.warn("CONSUMING...")
+            self.channel.start_consuming()
+        except Exception as e:
+            logger.critical("Error while connecting to RabbitMQ server: " + str(e))
+            self.stop()
 
     def stop(self):
         logger.critical("STOP ISSUED -- Stopping deal listener...")

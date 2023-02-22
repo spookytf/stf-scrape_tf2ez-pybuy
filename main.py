@@ -1,3 +1,7 @@
+import better_exceptions
+
+better_exceptions.MAX_LENGTH = None
+
 import signal
 import dotenv
 import sys
@@ -5,19 +9,20 @@ import os
 import configparser
 import tkinter
 import threading
-import coloredlogs, logging
 import pathlib
 import time
-import tkinter as tk # Python 3.x
+import tkinter as tk  # Python 3.x
 from tkextrafont import Font
 import tkinter.scrolledtext as ScrolledText
 import multiprocessing
 
+import logging as pylogger, logging
+from loguru import logger as logger
+
 from buy_listener import BuyListener
 from ReportGUI import ReportGUI
 
-__version__ = "v2.6.9-nice" # update this when you update the version in setup.py
-
+__version__ = "v2.7.0"  # update this when you update the version in setup.py
 
 # ---------------- START CONFIG ---------------- #
 global REPORT_WEBHOOK
@@ -28,8 +33,8 @@ global LAST_TIME
 LAST_TIME = float(time.time())
 global DELAY_RANGE
 DELAY_RANGE = 60
-#DELAY_RANGE = tk.IntVar()
-#DELAY_RANGE.set(45)
+# DELAY_RANGE = tk.IntVar()
+# DELAY_RANGE.set(45)
 
 global GUI_OBJECTS
 GUI_OBJECTS = {}
@@ -45,33 +50,40 @@ LOG_COLOR_LEVEL_TO_COLOR = {
     'CRITICAL': '#700000',
 }
 
-config = None
-pika_host = None
-pika_port = None
-pika_username = None
-pika_password = None
-pika_queue = None
-scrape_url = None
+# config = None
+# pika_host = None
+# pika_port = None
+# pika_username = None
+# pika_password = None
+# pika_queue = None
+# scrape_url = None
+
 
 # ---------------- END VARIABLES ---------------- #
 
-# MANAGER = logging.Manager("tf2ez_pybuy_" + __version__)
-# MANAGER.getLogger().setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-# MANAGER.getLogger().setLevel(logging.DEBUG)
+# MANAGER = logger.Manager("tf2ez_pybuy_" + __version__)
+# MANAGER.getLogger().setFormatter(logger.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+# MANAGER.getLogger().setLevel(logger.DEBUG)
 
 # GUI configurations
 # configure a custom font jason what are you doing
 
-class ResizeHandler(threading.Thread):
+class PropagateHandler(pylogger.Handler):
+    def emit(self, record):
+        logger.log(record)
+        #pylogger.getLogger(record.name).handle(record)
 
+
+class ResizeHandler(threading.Thread):
     window = None
     aspect_ratio = 1
     width = 0
     height = 0  # int(self.width / self.aspect_ratio)
     dim_lcm = 0
+
     # I'm way too fucking far in now... function to calculate the LCM. Seems reasonable.
     def lcm(self, a, b):
-        if(a == 0 or b == 0):
+        if (a == 0 or b == 0):
             return 0
 
         if a > b:
@@ -88,7 +100,6 @@ class ResizeHandler(threading.Thread):
     def __init__(self, window, aspect_ratio=1.0, g_width=500, g_height=500):
         super().__init__()
         self.window = window
-
 
         # ... this code makes a cool shape
         if aspect_ratio is None:
@@ -114,9 +125,8 @@ class ResizeHandler(threading.Thread):
         # this is intended for a main tkinter window, not a frame
         # that is using grid... NOT ANYTHING ELSE!
 
-
     def stop(self):
-        self.thread.join() # wait for it to finish very nicely
+        self.thread.join()  # wait for it to finish very nicely
 
     def thread_func(self):
 
@@ -132,7 +142,7 @@ class ResizeHandler(threading.Thread):
         def on_resize(event):
             w, h = event.width, event.height
             w1, h1 = self.window.winfo_width(), self.window.winfo_height()
-            logging.debug(f"on_resize: {w}x{h} | {w1}x{h1}")
+            logger.debug(f"on_resize: {w}x{h} | {w1}x{h1}")
             w1, h1  # must follow ASPECT_RATIO (w1/h1 = ASPECT_RATIO)
             if w > self.aspect_ratio * h:
                 # self.window.rowconfigure(0, weight=1)
@@ -162,59 +172,60 @@ class ResizeHandler(threading.Thread):
         # TODO: no idea if this will work with the way mainloop is handled
         self.window.bind("<Configure>", self.on_resize)
 
-logging.getLogger(__name__).setLevel(logging.DEBUG)
 
-class TextHandler(logging.Handler):
+class TextHandler(pylogger.Handler):
     # This class allows you to log to a Tkinter Text or ScrolledText widget
     # Adapted from Moshe Kaplan: https://gist.github.com/moshekaplan/c425f861de7bbf28ef06
 
     def __init__(self, text):
         # run the regular Handler __init__
-        logger = logging.getLogger(__name__)
-        logging.Handler.__init__(self)
-        #logging.getLogger().addHandler(logging.Handler)
+        logger = pylogger.getLogger(__name__)
+        pylogger.Handler.__init__(self)
 
-        #logging.Handler.setFormatter(self, coloredlogs.ColoredFormatter())
+        # logger.Handler.setFormatter(self, coloredlogs.ColoredFormatter())
 
         # Store a reference to the Text it will log to
         self.text = text
 
     def emit(self, record):
         msg = self.format(record)
+
         def append():
             self.text.configure(state='normal', background="#242424", foreground="#434343", font=("Arial", 10, "bold"))
             self.text.insert(tk.END, msg + '\n', record.levelname)
             # self.text.tag_config(record.levelname, foreground=f"{LOG_COLOR_LEVEL_TO_COLOR[record.levelname]}")
-            self.text.tag_config("CRITICAL", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['CRITICAL']}", background="#b0b0b0", font=("Arial", 10, "bold"))
+            self.text.tag_config("CRITICAL", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['CRITICAL']}", background="#b0b0b0",
+                                 font=("Arial", 10, "bold"))
             self.text.tag_config("ERROR", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['ERROR']}", background="black")
             self.text.tag_config("WARNING", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['WARNING']}", background="black")
             self.text.tag_config("SUCCESS", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['SUCCESS']}", background="black")
             self.text.tag_config("RABBIT", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['RABBIT']}", background="#b0b0b0")
-            self.text.tag_config("INFO", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['INFO']}", background="#b0b0b0", font=("Arial", 10, "bold"))
-            self.text.tag_config("DEBUG", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['DEBUG']}",background="#b0b0b0", font=("Arial", 10, "italic"))
+            self.text.tag_config("INFO", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['INFO']}", background="#b0b0b0",
+                                 font=("Arial", 10, "bold"))
+            self.text.tag_config("DEBUG", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['DEBUG']}", background="#b0b0b0",
+                                 font=("Arial", 10, "italic"))
             self.text.configure(state='disabled')
             # Autoscroll to the bottom
             self.text.yview(tk.END)
+
         # This is necessary because we can't modify the Text from other threads
         self.text.after(0, append)
+
 
 # ----------------------------------------------------------- #
 
 class GUI(threading.Thread):
     buyListener = None
     textHandler = None
-    def __init__(self):
-        super().__init__()
-        self.thread = None
+
+    def __init__(self, worker):
+        #super().__init__()
+        # self.thread = None
+        self.buyListener = worker
         self.build()
 
-    def set_worker(self, worker, text_handler):
+    def set_worker(self, worker):
         self.buyListener = worker
-        self.textHandler = text_handler
-        logger = logging.getLogger(__name__)
-        logger.addHandler(text_handler)
-        logger.setLevel("DEBUG")
-
 
     # ---------------- START GUI ---------------- #
     def build(self):
@@ -223,7 +234,7 @@ class GUI(threading.Thread):
         SPOOKY_FONT = Font(file=pathlib.Path('assets/font/IMFellEnglishSC-Regular.ttf'), family="IM Fell English SC")
         # self.root.wm_title("SPOOKYSCRAPE TF2EZ PYBUY" + " " + __version__)
         self.root.title("SPOOKYSCRAPE TF2EZ PYBUY" + " " + __version__)
-        #self.root.option_add("*Font", (SPOOKY_FONT))
+        # self.root.option_add("*Font", (SPOOKY_FONT))
         self.root.geometry("800x550")
         self.root.resizable(False, True)
         self.root.minsize(800, 550)
@@ -231,14 +242,13 @@ class GUI(threading.Thread):
         self.root.iconbitmap(pathlib.Path("assets/img/logo/spookyscrape.ico"))
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        logger = logging.getLogger(__name__)
-        logger.addHandler(self.textHandler)
-
-        self.root.frame = tkinter.Frame(self.root, highlightcolor="#bfbfbf", bg="#1b1b1b", relief="sunken", borderwidth=2)
+        self.root.frame = tkinter.Frame(self.root, highlightcolor="#bfbfbf", bg="#1b1b1b", relief="sunken",
+                                        borderwidth=2)
         self.root.frame.grid(row=0, column=0, sticky='ewsn')
         ##self.root.frame.configure(background="#242424")
 
-        self.root.frame.t_label = tkinter.Label(self.root.frame, text="PYBUY " + __version__, font=("IM Fell English SC", 14), fg="orange", bg="black")
+        self.root.frame.t_label = tkinter.Label(self.root.frame, text="PYBUY " + __version__,
+                                                font=("IM Fell English SC", 14), fg="orange", bg="black")
         self.root.frame.t_label.grid(column=0, row=0, sticky="n", padx=5, pady=5, columnspan=4)
         # it was JASON that chose this font
         # and I'm not going to change it
@@ -249,29 +259,35 @@ class GUI(threading.Thread):
 
         self.subtext_str = tkinter.StringVar()
         self.subtext_str.set("by Oscar & Jason of SpookyTF")
-        self.root.frame.ctn_label = tkinter.Label(self.root.frame, textvariable=self.subtext_str, font=("Comics Sans", 10), fg="orange", bg="black")
+        self.root.frame.ctn_label = tkinter.Label(self.root.frame, textvariable=self.subtext_str,
+                                                  font=("Comics Sans", 10), fg="orange", bg="black")
         self.root.frame.ctn_label.grid(column=0, row=5, sticky='ews', padx=5, pady=5, columnspan=1)
 
-        self.root.frame.button = tkinter.Button(self.root.frame, text="start", command=self.start, font=("Comics Sans", 14), fg="red", bg="#242424", relief="sunken", borderwidth=2)
+        self.root.frame.button = tkinter.Button(self.root.frame, text="start", command=self.start,
+                                                font=("Comics Sans", 14), fg="red", bg="#242424", relief="sunken",
+                                                borderwidth=2)
         self.root.frame.button['state'] = 'disabled'
         self.root.frame.button.grid(column=3, row=4, sticky='ewn', padx=5, pady=5, columnspan=2)
 
-        #global DELAY_RANGE
-        #self.root.frame.delay_scale = tkinter.Scale(self.root.frame, from_=0, to=360, orient=tkinter.HORIZONTAL, label="delay range (s)", font=("Comics Sans", 12), fg="orange", bg="black", length=200, variable=DELAY_RANGE, command=self.update_delay_range)
-        #self.root.frame.delay_scale.grid(column=0, row=6, sticky='ews', padx=5, pady=5, columnspan=4)
+        # global DELAY_RANGE
+        # self.root.frame.delay_scale = tkinter.Scale(self.root.frame, from_=0, to=360, orient=tkinter.HORIZONTAL, label="delay range (s)", font=("Comics Sans", 12), fg="orange", bg="black", length=200, variable=DELAY_RANGE, command=self.update_delay_range)
+        # self.root.frame.delay_scale.grid(column=0, row=6, sticky='ews', padx=5, pady=5, columnspan=4)
 
         self.display_log = tk.StringVar()
-        self.root.frame.label = tkinter.Label(self.root.frame, textvariable=self.display_log, font=("Comics Sans", 12), fg="green")
+        self.root.frame.label = tkinter.Label(self.root.frame, textvariable=self.display_log, font=("Comics Sans", 12),
+                                              fg="green")
 
         if os.getenv('LOGIN_METHOD') == "cookie" and os.getenv('LOGIN_COOKIE') is not None:
             self.display_log.set("cookie found, log in!")
             self.root.frame.label.configure(fg="white", bg="green")
 
             self.root.frame.login_button['state'] = 'normal'
-            self.root.frame.login_button.configure(self.root.frame, text="🟡 login ", font=("Comics Sans", 14), fg="yellow", bg="black", command=self.login)
-            #self.root.frame.login_button.grid(column=3, row=5, sticky='ewn', padx=5, pady=5, columnspan=2)
+            self.root.frame.login_button.configure(self.root.frame, text="🟡 login ", font=("Comics Sans", 14),
+                                                   fg="yellow", bg="black", command=self.login)
+            # self.root.frame.login_button.grid(column=3, row=5, sticky='ewn', padx=5, pady=5, columnspan=2)
         else:
-            self.root.frame.login_button = tkinter.Button(self.root.frame, text="❌ not logged in", command=self.login, font=("Arial", 14, "bold"), fg="red")
+            self.root.frame.login_button = tkinter.Button(self.root.frame, text="❌ not logged in", command=self.login,
+                                                          font=("Arial", 14, "bold"), fg="red")
             self.root.frame.login_button['state'] = 'normal'
         self.root.frame.login_button.grid(column=3, row=5, sticky='ewn', padx=5, pady=5, columnspan=2)
 
@@ -282,7 +298,7 @@ class GUI(threading.Thread):
         self.root.frame.grid_columnconfigure(2, weight=1, uniform='a')
         self.root.frame.grid_columnconfigure(3, weight=1, uniform='a')
 
-        # Add text widget to display logging info
+        # Add text widget to display logger info
         st = ScrolledText.ScrolledText(self.root.frame, state='disabled', bg="#242424", fg="#434343")
         st.configure(font='TkFixedFont')
         st.grid(column=0, row=1, sticky='wsen', columnspan=4)
@@ -292,7 +308,7 @@ class GUI(threading.Thread):
         # Create textLogger
         text_handler = TextHandler(st)
         self.textHandler = text_handler
-        logging.getLogger(__name__).addHandler(text_handler)
+        pylogger.getLogger(__name__).addHandler(text_handler)
 
         if not os.path.exists("logs/tf2ez_pybuy.log"):
             pathlib.Path("logs").mkdir(parents=True, exist_ok=True)
@@ -304,15 +320,17 @@ class GUI(threading.Thread):
 
         # Add the handler to logger
         # MANAGER.getLogger('tf2ez_pybuy_combined').setLevel(gui).addHandler(text_handler);
-        logger.addHandler(text_handler)
-        logger.addHandler(logging.FileHandler(pathlib.Path("logs/combined_" + str(time.time()) + ".log"), "a", "utf-8", True, "DEBUG"))
+        # logger.addHandler(text_handler)
+        # logger.addHandler(logger.FileHandler(pathlib.Path("logs/combined_" + str(time.time()) + ".log"), "a", "utf-8", True, "DEBUG"))
         # shouldn't ever actually "append"
 
+        logger.add(sink=(pathlib.Path("logs/user_0.log")), rotation="1 day", retention="1 week", enqueue=True,
+                   level="DEBUG", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", encoding="utf-8")
 
         self.root.frame.grid(row=0, column=0, sticky='news', padx=5, pady=5)
         self.root.pack_propagate(True)
-        #self.root.frame.pack(fill="x", expand = True,  pady=10, padx=10)
-        #self.root.frame.pack(fill="both", expand=True)
+        # self.root.frame.pack(fill="x", expand = True,  pady=10, padx=10)
+        # self.root.frame.pack(fill="both", expand=True)
 
         # self.root.frame.pack(side="bottom", fill="x", expand=True, pady=10, padx=10)
         # self.root.frame.pack_propagate(False)
@@ -342,7 +360,7 @@ class GUI(threading.Thread):
         # self.root.frame.grid_columnconfigure(2, weight=1, uniform='a')
         # self.root.frame.grid_columnconfigure(3, weight=1, uniform='a')
         #
-        # # Add text widget to display logging info
+        # # Add text widget to display logger info
         # st.grid(column=0, row=1, sticky='wsen', columnspan=4)
 
         # Start the ResizeHandler to make the GUI responsive
@@ -360,17 +378,16 @@ class GUI(threading.Thread):
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_columnconfigure(1, weight=0)
 
-
-        self.root.mainloop()
+        self.root.frame.mainloop()
         # ---------------- END GUI ---------------- #
 
-
     def login(self):
-        threading.Thread(target=self.login_thread).run()
+        logger.debug("login button pressed")
+        self.login_int()
 
-    def login_thread(self):
-        self.root.frame.label["text"] = "logging in..."
-        self.root.frame.login_button["text"] = "logging in..."
+    def login_int(self):
+        self.root.frame.label["text"] = "logger in..."
+        self.root.frame.login_button["text"] = "logger in..."
         self.root.frame.login_button["fg"] = "black"
         self.root.frame.button["state"] = "disabled"
         self.root.frame.login_button["state"] = "disabled"
@@ -378,56 +395,52 @@ class GUI(threading.Thread):
 
         login_method = os.getenv('LOGIN_METHOD')
 
-        while not logged_in:
-            try:
-                logging.warning("Initializing Selenium Webdriver, logging in...")
-                buyListener.init_selenium_and_login(login_method)
-                logged_in = True
-            except:
-                self.root.frame.label["text"] = "login failed"
-                self.root.frame.label["fg"] = "white"
-                self.root.frame.login_button["text"] = "❌ not logged in"
-                self.root.frame.login_button["bg"] = "red"
-                #self.root.frame.login_button.after(500, lambda: self.root.frame.login_button.configure(bg="#4C4C4C"))
-                self.root.frame.login_button["state"] = "normal"
-                self.root.frame.button["state"] = "disabled"
-                self.root.frame.login_button["bg"] = "red"
-                #self.root.frame.button["bg"] = "#434343"
-                #    .configure(bg="#242424", relief="sunken", borderwidth=2)
-                return
+        try:
+            self.buyListener.init_selenium_and_login()
+            logged_in = True
+        except:
+            self.root.frame.label["text"] = "login failed"
+            self.root.frame.label["fg"] = "white"
+            self.root.frame.login_button["text"] = "❌ not logged in"
+            self.root.frame.login_button["bg"] = "red"
+            # self.root.frame.login_button.after(500, lambda: self.root.frame.login_button.configure(bg="#4C4C4C"))
+            self.root.frame.login_button["state"] = "normal"
+            self.root.frame.button["state"] = "disabled"
+            self.root.frame.login_button["bg"] = "red"
+            # self.root.frame.button["bg"] = "#434343"
+            #    .configure(bg="#242424", relief="sunken", borderwidth=2)
+            return
         if os.getenv('LOGIN_COOKIE') is not None:
             self.root.frame.label["text"] = "logged in!"
             self.root.frame.login_button["text"] = "✅ logged in"
             self.root.frame.login_button["state"] = "disabled"
             self.root.frame.login_button["bg"] = "green"
             self.root.frame.button["state"] = "normal"
-            #self.root.frame.button.configure(bg="#4C4C4C", relief="raised", borderwidth=1)
+            # self.root.frame.button.configure(bg="#4C4C4C", relief="raised", borderwidth=1)
         else:
             self.root.frame.label["text"] = "try again -- invalid cookie"
             self.root.frame.label["fg"] = "white"
             self.root.frame.login_button["text"] = "❌ cookie expired"
             self.root.frame.login_button["state"] = "normal"
             self.root.frame.login_button["bg"] = "red"
-            #self.root.frame.login_button.after(500, lambda: self.root.frame.login_button.configure(bg="#4C4C4C"))
+            # self.root.frame.login_button.after(500, lambda: self.root.frame.login_button.configure(bg="#4C4C4C"))
 
-        self.root.attributes('-topmost',True)
+        self.root.attributes('-topmost', True)
 
     def start(self):
         self.thread = threading.Thread(target=self.thread_func)
         self.run()
-        #self.thread.start()
+        # self.thread.start()
 
     def thread_func(self):
-        logging.addHandler(self.textHandler)
+        # logger.addHandler(self.textHandler)
         self.root.frame.button["state"] = "normal"
         self.root.frame.label["text"] = "running..."
         self.root.frame.button.configure(text="stop", command=self.stop, fg="red", font=("Arial", 14, "bold"))
         # Run buyListener to listen for messages
         # self.testing_spam_logs(100)
-        logging.info("starting...")
+        logger.info("starting...")
         self.buyListener.start()
-
-
 
         # never reached
         # ^^ this is a lie, it is reached when the thread is stopped!
@@ -439,11 +452,11 @@ class GUI(threading.Thread):
         self.root.frame.label["text"] = "stopping..."
         self.root.frame.label.configure(fg="black", bg="#AF7C04")
         self.root.frame.button["state"] = "disabled"
-        logging.warning("stopped.");
+        logger.warning("stopped.");
         self.root.frame.label.after(500, lambda: self.root.frame.label.configure(fg="black", bg="white"))
-        self.root.frame.button.after(500, lambda: self.root.frame.button.configure(text="start", command=self.start, fg="green"))
-        #self.root.frame.button.configure(text="start", command=self.start, fg="green")
-
+        self.root.frame.button.after(500, lambda: self.root.frame.button.configure(text="start", command=self.start,
+                                                                                   fg="green"))
+        # self.root.frame.button.configure(text="start", command=self.start, fg="green")
 
     def on_closing(self):
         self.root.frame.quit()
@@ -462,18 +475,20 @@ class GUI(threading.Thread):
     def testing_spam_logs(self, n=100):
         for i in range(n):
             if i % 5 == 0:
-                logging.debug("test")
+                logger.debug("test")
             elif i % 5 == 1:
-                logging.info("test")
+                logger.info("test")
             elif i % 5 == 2:
-                logging.warning("test")
+                logger.warning("test")
             elif i % 5 == 3:
-                logging.error("test")
+                logger.error("test")
             elif i % 5 == 4:
-                logging.critical("test")
+                logger.critical("test")
 
     def throw_exception(self):
         raise IOError("test", "lots of testing")
+
+
 def main():
     # ---------------- Load variables ---------------- #
     config = configparser.ConfigParser()
@@ -486,7 +501,7 @@ def main():
     pika_username = os.getenv("PIKA_USERNAME")
     pika_password = os.getenv("PIKA_PASSWORD")
 
-    # ---------------- Configure logging ---------------- #
+    # ---------------- Configure logger ---------------- #
 
     level = os.getenv('log_level')
     if level is None:
@@ -496,7 +511,7 @@ def main():
     term_level = os.getenv('term_log_level') if os.getenv('term_log_level') is not None else level
     file_level = os.getenv('file_log_level') if os.getenv('file_log_level') is not None else level
 
-    # colored logging configuration
+    # colored logger configuration
     # coloredlogs.install(level)
 
     # def addHandlers(logger, hdlrs):
@@ -504,27 +519,15 @@ def main():
     #         logger.addHandler(hdlr)
     #
     # def addAllHandlers(logger):
-    #     addHandlers(logger, [ logging.Handler(),
-    #                            logging.FileHandler('logs/tf2ez_pybuy.log', 'a'),
-    #                            logging.FileHandler('logs/combined_' + str(time.time_ns()) + '.log', 'w')])
+    #     addHandlers(logger, [ logger.Handler(),
+    #                            logger.FileHandler('logs/tf2ez_pybuy.log', 'a'),
+    #                            logger.FileHandler('logs/combined_' + str(time.time_ns()) + '.log', 'w')])
 
-    myGUI = GUI()
+    pylogger.basicConfig(level=pylogger.DEBUG,
+                         filename="logs/tf2ez_pybuy.log",
+                         format='%(levelname)s %(asctime)s - %(message)s',
+                         datefmt='%d %m %y %H:%M:%S')
 
-    logging.basicConfig(level=logging.DEBUG    ,
-                        filename="logs/tf2ez_pybuy.log",
-                        format='%(levelname)s %(asctime)s - %(message)s',
-                        datefmt='%d %m %y %H:%M:%S')
-
-    logging.getLogger().addHandler(myGUI.textHandler)
-
-    logging.getLogger('urllib3').setLevel("DEBUG").addHandler(myGUI.textHandler)
-    logging.getLogger('selenium').setLevel("DEBUG").addHandler(myGUI.textHandler)
-    logging.getLogger('undetected_chromedriver').setLevel("DEBUG").addHandler(myGUI.textHandler)
-
-    coloredlogs.auto_install()
-
-    logging.getLogger(__name__).addHandler(myGUI.textHandler)
-    
     # ---------------- pass data to buyListener ---------------- #
     global DELAY_RANGE
     DELAY_RANGE = int(config['TIMES']['delay_range'])
@@ -534,13 +537,13 @@ def main():
 
     # ---------------- Start GUI && worker ---------------- #
 
-    worker = BuyListener(pika_host, pika_port, pika_username, pika_password, config['RABBITMQ']['queue'], int(config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
-    myGUI.set_vals(worker, myGUI.text_handler)
-    #worker.delayed_passthrough('textHandler', myGUI.textHandler)
-    worker.delayed_passthrough('subtext_str', myGUI.subtext_str)
+
+    worker = BuyListener(pika_host=pika_host, pika_port=pika_port, pika_username=pika_username, pika_password=pika_password, pika_queue=config['RABBITMQ']['queue'],
+                         delay_range=config['TIMES']['delay_range'], scrape_url=config['SCRAPE']['url'], login_method=config['LOGIN']['method'])
+    myGUI = GUI(worker)
+
 
 def handler(signum, frame):
-    logger = logging.getLogger()
     if signal == signal.SIGINT:
         logger.warning('Killed by user')
         sys.exit(0)
@@ -550,10 +553,6 @@ def handler(signum, frame):
         reportgui.run()
 
 
-
 if __name__ == "__main__":
-        # signal.signal(signal.SIGINT, handler)
-        main()
-
-
-
+    # signal.signal(signal.SIGINT, handler)
+    main()
