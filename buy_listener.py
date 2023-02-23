@@ -67,10 +67,17 @@ def buy_item_by_id(item_id, item_price, item_hash_name):
             "message": f"You do not have enough wagered balance for this operation. [wagered balance: ${wagered_balance}, price: ${item_price}]."
         }
 
+        previousCartSize = len(driver.find_elements(By.CLASS_NAME, ".new-item-info-holder"))
+
         logging.info(f"({item_hash_name}) - Adding to cart.")
         item_to_buy[0].click()
         driver.find_element(By.ID, "buyItems").click()
-        # TODO: we shouldn't assume the purchase was successful
+        if len(driver.find_elements(By.CLASS_NAME, ".new-item-info-holder")) == previousCartSize:
+            logging.error(f"({item_hash_name}) - Failed to add to cart.")
+            return {
+                "success": False,
+                "message": "Failed to add to cart."
+            }
         return {
             "success": True,
             "message": f"bought item {item_hash_name} for ${item_price}."
@@ -172,17 +179,17 @@ def callback(ch, method, properties, body):
 
     # wait(5) #TODO: stupid
     global webhook, discord_webhook
-    if not status['success']:
-        logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
-        ITEMS_MISSED = ITEMS_MISSED + 1
-        embed = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - N/A", description=f"{status['message']}",
-                                             color='ff0000')
-    else:
+    if status['success']:
         logging.info(f"({item_hash_name}) - item bought successfully.")
         PROFIT = PROFIT + profit
         ITEMS_BOUGHT = ITEMS_BOUGHT + 1
         embed = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - ${profit:.2f} net",
                                              description=f"{status['message']}", color='43cf3c')
+    else:
+        logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
+        ITEMS_MISSED = ITEMS_MISSED + 1
+        embed = discord_webhook.DiscordEmbed(title=f"({item_hash_name}) - N/A", description=f"{status['message']}",
+                                             color='ff0000')
 
     # update GUI component (maybe)
     # global GUI_OBJECTS
@@ -308,20 +315,20 @@ class BuyListener:
         driver.get(self.scrape_url)
 
         # override with dotenv
-        if os.getenv("LOGIN_METHOD") is not None:
-            if os.getenv("LOGIN_METHOD") != "":
-                self.login_method = os.getenv("LOGIN_METHOD")
-            elif os.getenv("LOGIN_METHOD") != "cookie":
-                self.login_method = "steam"
-            self.login_method = self.login_method.lower()
+        # if os.getenv("LOGIN_METHOD") is not None:
+        #     if os.getenv("LOGIN_METHOD") != "":
+        #         self.login_method = os.getenv("LOGIN_METHOD")
+        #     elif os.getenv("LOGIN_METHOD") != "cookie":
+        #         self.login_method = "steam"
+        #     self.login_method = self.login_method.lower()
 
         #logging.info("login method is defined as: " + self.login_method)
 
         # what if cookie is invalid ya dingus
         if os.getenv("login_cookie") is not None and os.getenv("login_cookie") != "":
-            logging.warn("you've set login_method to \"steam\", but your cookie is configured. Switching modes...")
+            #logging.warn("you've set login_method to \"steam\", but your cookie is configured. Switching modes...")
             #self.login_method = "cookie"
-            dotenv.set_key('.env', 'LOGIN_METHOD', 'cookie')
+            #dotenv.set_key('.env', 'LOGIN_METHOD', 'cookie')
 
             logging.critical("no more login methods. fuck that.")
             # logging.info("login method is now defined as: " + self.login_method)
@@ -348,9 +355,9 @@ class BuyListener:
         # dotenv.set_key('.env', 'LOGIN_METHOD', 'cookie')
         try:
             wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'menu-username-text')))
-            if self.login_method == "steam":
-                generated_cookie = driver.get_cookie("laravel_session")['value']
-                dotenv.set_key('.env', 'LOGIN_COOKIE', generated_cookie)
+            # if self.login_method == "steam":
+            generated_cookie = driver.get_cookie("laravel_session")['value']
+            dotenv.set_key('.env', 'LOGIN_COOKIE', generated_cookie)
         except:
             logging.error("Couldn't login. (incorrect cookie?).")
             if os.getenv("login_cookie") is not None and os.getenv("login_cookie" != ""):

@@ -11,7 +11,7 @@ import tkinter.scrolledtext as ScrolledText
 
 from buy_listener import BuyListener
 
-__version__ = "v2.1.0b5"
+__version__ = "v2.1.0b6"
 # update this instead of setup.py
 
 global LAST_TIME
@@ -175,7 +175,7 @@ class GUI(threading.Thread):
             self.root.frame.login_button["state"] = "normal"
             self.root.frame.button["state"] = "disabled"
             return
-        if os.getenv('LOGIN_COOKIE') is not None:
+        if dotenv.get_key('.env','LOGIN_COOKIE') is not None:
             self.root.frame.label["text"] = "logged in!"
             self.root.frame.login_button["text"] = "✅ logged in"
             self.root.frame.login_button["state"] = "disabled"
