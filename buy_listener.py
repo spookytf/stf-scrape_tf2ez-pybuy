@@ -17,7 +17,7 @@ import functools
 #  GLOBAL VARIABLES #
 # ----------------- #
 global BLOCKED_CONNECTION_TIMEOUT
-BLOCKED_CONNECTION_TIMEOUT = 60 * 11 # 11 minutes
+BLOCKED_CONNECTION_TIMEOUT = 60 * 31 # 31 minutes
 
 global platform
 global LAST_TIME
@@ -77,6 +77,7 @@ def buy_item_by_id(item_id, item_price, item_hash_name):
 
 #global ITEMS
 #ITEMS = []
+global discord_webhook, webhook
 discord_webhook_link = os.getenv("WEBHOOK_LINK")
 webhook = discord_webhook.DiscordWebhook(url=discord_webhook_link)
 
@@ -148,9 +149,9 @@ def callback(ch, method, properties, body):
     #global COOLDOWN, DELAY_RANGE
     #if(time.time() - LAST_TIME > COOLDOWN):
 
-    rand_delay = random.randint(0, DELAY_RANGE)
-    logging.debug("rand_delay: " + str(rand_delay) + " seconds")
-    time.sleep(rand_delay)
+    # rand_delay = random.randint(0, DELAY_RANGE)
+    # logging.debug("rand_delay: " + str(rand_delay) + " seconds")
+    # time.sleep(rand_delay)
     #COOLDOWN = rand_delay
     #logging.info("COOLDOWN: " + str(COOLDOWN) + " seconds")
 
@@ -166,7 +167,7 @@ def callback(ch, method, properties, body):
     status = buy_item_by_id(item_id, buy_usd, item_hash_name)
 
     # wait(5) #TODO: stupid
-
+    global webhook, discord_webhook
     if not status['success']:
         logging.error(f"({item_hash_name}) - Cannot complete order. {status['message']}")
         ITEMS_MISSED = ITEMS_MISSED + 1
@@ -207,6 +208,12 @@ def callback(ch, method, properties, body):
 
     #if ELAPSED_STR is not None:
         #ELAPSED_STR.set("cooldown left: " + str(COOLDOWN - ELAPSED_TIME))
+
+def msg_callback_wrapper(ch, method, properties, body):
+    try: callback(ch, method, properties, body)
+    except Exception as e:
+        logging.error(f"Exception in callback: {e}")
+        logging.debug(e)
 
 class BuyListener:
     # constructor passthrough configuration items
@@ -293,7 +300,8 @@ class BuyListener:
         if os.getenv("login_cookie") is not None and os.getenv("login_cookie") != "":
             logging.warn("you've set login_method to \"steam\", but your cookie is configured. Switching modes...")
             self.login_method = "cookie"
-            os.putenv("LOGIN_METHOD", "cookie")
+            dotenv.set_key('.env', 'LOGIN_METHOD', 'cookie')
+
             logging.info("login method is now defined as: " + self.login_method)
 
         if self.login_method == "steam":
@@ -318,7 +326,7 @@ class BuyListener:
                 time.sleep(1)
                 wait.until(EC.title_contains("TF2EASY.COM"))
                 logging.info("Excellent, you're logged in. Changing your login_method to 'cookie' in .env")
-                os.set_key('.env', 'LOGIN_METHOD', 'cookie')
+                dotenv.set_key('.env', 'LOGIN_METHOD', 'cookie')
         try:
             wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'menu-username-text')))
             if self.login_method == "steam":
@@ -328,8 +336,8 @@ class BuyListener:
             logging.error("Couldn't login. Probably incorrect cookie.")
             if self.login_method == "cookie" and os.getenv("login_cookie") is not None and os.getenv("login_cookie" != ""):
                 logging.warn("found invalid cookie. Removing and switching to \"steam\" login_method.")
-                os.set_key('.env', 'LOGIN_COOKIE', '')
-                os.set_key('.env', 'LOGIN_METHOD', 'steam')
+                dotenv.set_key('.env', 'LOGIN_COOKIE', '')
+                dotenv.set_key('.env', 'LOGIN_METHOD', 'steam')
                 logging.info("login method is now defined as: " + self.login_method)
                 loggin.info("trying to log you in...")
                 try:
@@ -359,11 +367,11 @@ class BuyListener:
         logging.warning("Deal listener initialized.")
 
     def on_closing(self):
-        if self.connection is not None :
-            self.connection.close()
         if self.channel is not None :
             self.channel.stop_consuming()
             self.channel.close()
+        if self.connection is not None :
+            self.connection.close()
         global driver
         driver.quit()
 
@@ -390,14 +398,19 @@ class BuyListener:
         self.channel.basic_qos(prefetch_count=200)
 
 
-        self.channel.basic_consume(on_message_callback=callback,  queue=self.pika_queue, auto_ack=True, exclusive=False)
+        self.channel.basic_consume(on_message_callback=msg_callback_wrapper,  queue=self.pika_queue, auto_ack=True, exclusive=False)
         #self.channel.consume(self.pika_queue, callback, auto_ack=False, exclusive=False)
-        #self.channel.confirm_delivery()
 
         # clear old deals so we don't waste time
         #self.channel.queue_purge(queue=self.pika_queue)
         logging.info("Waiting for messages...")
-        self.channel.start_consuming()
+        try:
+            self.channel.start_consuming()
+        except Exception as e:
+            logging.error("Exception in start_consuming: " + str(e))
+            self.on_closing()
+            wait(3)
+            self.start()
 
     def stop(self):
         if self.channel is not None :
