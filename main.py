@@ -11,7 +11,7 @@ import tkinter.scrolledtext as ScrolledText
 
 from buy_listener import BuyListener
 
-__version__ = "v2.1.0b2"
+__version__ = "v2.1.0b4"
 # update this instead of setup.py
 
 global LAST_TIME
@@ -211,6 +211,10 @@ class GUI(threading.Thread):
         for widget in self.root.frame.winfo_children():
             widget.destroy()
         self.root.destroy()
+        global driver
+        driver = None
+        if driver is not None:
+            driver.quit()
         if self.buy_listener is not None:
             self.buy_listener.stop()
         exit(0)
@@ -243,6 +247,9 @@ def main():
     pika_port = int(os.getenv("PIKA_PORT"))
     pika_username = os.getenv("PIKA_USERNAME")
     pika_password = os.getenv("PIKA_PASSWORD")
+    pika_queue = os.getenv("PIKA_QUEUE")
+    pika_routing_key = os.getenv("PIKA_ROUTING_KEY")
+    pika_exchange = os.getenv("PIKA_EXCHANGE")
 
     # ---------------- Configure logging ---------------- #
     logging.basicConfig(level=os.getenv("LOG_LEVEL") if os.getenv("LOG_LEVEL") is not None else logging.INFO,
@@ -257,7 +264,7 @@ def main():
     coloredlogs.install()
     
     # ---------------- pass data to buy_listener ---------------- #
-    worker = BuyListener(logging, pika_host, pika_port, pika_username, pika_password, config['RABBITMQ']['queue'], int(config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
+    worker = BuyListener(logging, pika_host, pika_port, pika_username, pika_password, pika_queue, pika_routing_key, pika_exchange, (config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
     myGUI = GUI(worker)
     #worker.delayed_passthrough('subtext_str', myGUI.subtext_str)
     global DELAY_RANGE
