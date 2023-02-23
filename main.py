@@ -11,7 +11,8 @@ import tkinter.scrolledtext as ScrolledText
 
 from buy_listener import BuyListener
 
-__version__ = "v2.0.0" # update this when you update the version in setup.py
+__version__ = "v2.1.0"
+# update this instead of setup.py
 
 global LAST_TIME
 LAST_TIME = float(time.time())
@@ -39,6 +40,9 @@ pika_password = None
 pika_queue = None
 scrape_url = None
 
+# TODO: REPLACE WITH THREAD SAFE VISUAL LOGGER
+# https://raw.githubusercontent.com/beenje/tkinter-logging-text-widget/master/main.py
+# https://github.com/beenje/tkinter-logging-text-widget
 class TextHandler(logging.Handler):
     # This class allows you to log to a Tkinter Text or ScrolledText widget
     # Adapted from Moshe Kaplan: https://gist.github.com/moshekaplan/c425f861de7bbf28ef06
@@ -58,7 +62,7 @@ class TextHandler(logging.Handler):
             self.text.insert(tk.END, msg + '\n', record.levelname)
             self.text.tag_config(record.levelname, foreground=f"{LOG_COLOR_LEVEL_TO_COLOR[record.levelname]}")
             self.text.tag_config("CRITICAL", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['CRITICAL']}", font=("Arial", 10, "bold"))
-            #self.text.tag_config("WARNING", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['WARNING']}", background="black")
+            self.text.tag_config("WARNING", foreground=f"{LOG_COLOR_LEVEL_TO_COLOR['WARNING']}", background="black")
             self.text.configure(state='disabled')
             # Autoscroll to the bottom
             self.text.yview(tk.END)
@@ -116,6 +120,7 @@ class GUI(threading.Thread):
 
         self.root.option_add('*tearOff', 'FALSE')
         self.root.frame.grid(column=0, row=0, sticky='new')
+
         self.root.frame.grid_columnconfigure(0, weight=1, uniform='a')
         self.root.frame.grid_columnconfigure(1, weight=1, uniform='a')
         self.root.frame.grid_columnconfigure(2, weight=1, uniform='a')
@@ -163,9 +168,10 @@ class GUI(threading.Thread):
         try:
             self.buy_listener.init_selenium_and_login()
         except:
-            self.root.frame.label["text"] = "login failed"
-            self.root.frame.label["fg"] = "red"
-            self.root.frame.login_button["text"] = "❌ not logged in"
+            self.root.frame.label["text"] = "❌ login failed"
+            self.root.frame.label["fg"] = "black"
+            self.root.frame.label["bg"] = "red"
+            self.root.frame.login_button["text"] = "login"
             self.root.frame.login_button["state"] = "normal"
             self.root.frame.button["state"] = "disabled"
             return
@@ -185,6 +191,7 @@ class GUI(threading.Thread):
     def stop(self):
         self.buy_listener.stop()
         self.root.frame.label["text"] = "not running"
+        self.root.frame.label["fg"] = "black"
         self.root.frame.button.configure(text="start", command=self.start, fg="green")
 
     def thread_func(self):
@@ -252,7 +259,7 @@ def main():
     # ---------------- pass data to buy_listener ---------------- #
     worker = BuyListener(logging, pika_host, pika_port, pika_username, pika_password, config['RABBITMQ']['queue'], int(config['TIMES']['delay_range']), config['SCRAPE']['url'], config['LOGIN']['method'])
     myGUI = GUI(worker)
-    worker.delayed_passthrough('subtext_str', myGUI.subtext_str)
+    #worker.delayed_passthrough('subtext_str', myGUI.subtext_str)
     global DELAY_RANGE
     DELAY_RANGE = int(config['TIMES']['delay_range'])
 

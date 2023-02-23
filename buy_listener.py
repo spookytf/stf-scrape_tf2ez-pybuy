@@ -11,6 +11,7 @@ import time as time
 import logging
 import json
 import random
+import functools
 
 global platform
 global LAST_TIME
@@ -77,7 +78,20 @@ checked_list = []
 def callback(ch, method, properties, body):
     global DELAY_RANGE, PROFIT, ITEMS_BOUGHT, ITEMS_MISSED
     # logging.debug("TIME UNTIL NEXT BUY: " + str(time.time() - LAST_TIME) + " seconds")
-    message_dict = json.loads(body)
+    if body == b'':
+        logging.error("Received empty message. Moving on.")
+        return
+    elif body is None or body == b'null':
+        logging.error("Received None message. Moving on.")
+        return
+    try:
+        message_dict = json.loads(body)
+    except:
+        logging.error("Received invalid message. Moving on.")
+        logging.debug(body)
+        return
+
+    #message_dict = json.loads(body)
     item_hash_name = message_dict['item_hash_name']
     item_id = message_dict['item_id']
 
@@ -212,7 +226,10 @@ class BuyListener:
         self.pika_port = pika_port
         self.pika_username = pika_username
         self.pika_password = pika_password
-        self.pika_queue = pika_queue
+        if os.getenv("PIKA_QUEUE") is not None:
+            self.pika_queue = os.getenv("PIKA_QUEUE")
+        else:
+            self.pika_queue = pika_queue
         self.login_method = login_method
 
         # make sure URL ends with a slash
@@ -228,6 +245,7 @@ class BuyListener:
         GUI_OBJECTS[name] = object
 
     def init_selenium_and_login(self):
+
         # ---------------- Configure Driver Options ---------------- #
         options = Options()
         options.add_argument("--ignore-certificate-errors")
@@ -254,14 +272,29 @@ class BuyListener:
         wait = WebDriverWait(driver, 60)
         driver.get(self.scrape_url)
 
-        login_method = self.login_method.lower()
+        # override with dotenv
+        if os.getenv("LOGIN_METHOD") is not None:
+            if os.getenv("LOGIN_METHOD") != "":
+                self.login_method = os.getenv("LOGIN_METHOD")
+            elif os.getenv("LOGIN_METHOD") != "cookie":
+                self.login_method = "steam"
 
-        logging.info("login method is defined as: " + login_method)
-        if login_method == "steam":
+        self.login_method = self.login_method.lower()
+
+        logging.info("login method is defined as: " + self.login_method)
+
+        # what if cookie is invalid ya dingus
+        if os.getenv("login_cookie") is not None and os.getenv("login_cookie") != "":
+            logging.warn("you've set login_method to \"steam\", but your cookie is configured. Switching modes...")
+            self.login_method = "cookie"
+            os.putenv("LOGIN_METHOD", "cookie")
+            logging.info("login method is now defined as: " + self.login_method)
+
+        if self.login_method == "steam":
             driver.find_element(By.CLASS_NAME, "login-block").click()
             time.sleep(1)
             wait.until(EC.title_contains("TF2EASY.COM"))
-        elif login_method == "cookie":
+        elif self.login_method == "cookie":
             login_cookie = os.getenv("login_cookie")
             driver.add_cookie({
                 "name": "laravel_session",
@@ -269,17 +302,43 @@ class BuyListener:
             })
             driver.refresh()
         else:
-            logging.critical("You have to select login method in config.ini!")
-            exit(1)
-            return
+            if not os.getenv("login_cookie") or os.getenv("login_cookie") == "":
+                logging.warn("you're in cookie mode, but your cookie isn't set. Switching modes...")
+                self.login_method = "steam"
+                logging.info("login method is now defined as: " + self.login_method)
+                logging.warn("you will need to login to steam in the browser window that is now open.")
+                driver.get(self.scrape_url)
+                driver.find_element(By.CLASS_NAME, "login-block").click()
+                time.sleep(1)
+                wait.until(EC.title_contains("TF2EASY.COM"))
+                logging.info("Excellent, you're logged in. Changing your login_method to 'cookie' in .env")
+                os.set_key('.env', 'LOGIN_METHOD', 'cookie')
         try:
             wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'menu-username-text')))
-            if login_method == "steam":
+            if self.login_method == "steam":
                 generated_cookie = driver.get_cookie("laravel_session")['value']
                 dotenv.set_key('.env', 'LOGIN_COOKIE', generated_cookie)
         except:
-            logging.info("Couldn't login. (Wrong cookie?)")
-            return
+            logging.error("Couldn't login. Probably incorrect cookie.")
+            if self.login_method == "cookie" and os.getenv("login_cookie") is not None and os.getenv("login_cookie" != ""):
+                logging.warn("found invalid cookie. Removing and switching to \"steam\" login_method.")
+                os.set_key('.env', 'LOGIN_COOKIE', '')
+                os.set_key('.env', 'LOGIN_METHOD', 'steam')
+                logging.info("login method is now defined as: " + self.login_method)
+                loggin.info("trying to log you in...")
+                try:
+                    driver.find_element(By.CLASS_NAME, "login-block").click()
+                    time.sleep(1)
+                    wait.until(EC.title_contains("TF2EASY.COM"))
+                    logger.info("LOGGED IN SUCCESSFULLY!")
+                    logger.warn("waiting for your cookie & placing it into .env...")
+                    wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'menu-username-text')))
+                    generated_cookie = driver.get_cookie("laravel_session")['value']
+                    dotenv.set_key('.env', 'LOGIN_COOKIE', generated_cookie)
+                    logger.info("all done. Have a nice flight.")
+                except:
+                    logging.critical("Failed to log you in a second time. Please check network connection & bandwidth, then restart.")
+                    return
 
         logging.info("LOGGED IN SUCCESSFULLY!")
         driver.get(self.scrape_url + "market")
@@ -293,19 +352,43 @@ class BuyListener:
         DELAY_RANGE = self.delay_range
         logging.warning("Deal listener initialized.")
 
+    def on_closing(self):
+        if self.connection is not None :
+            self.connection.close()
+        if self.channel is not None :
+            self.channel.stop_consuming()
+            self.channel.close()
+        global driver
+        driver.quit()
 
     def start(self):
         # ---------------- Start listening for messages ---------------- #
         self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.pika_host, port=self.pika_port, credentials=pika.PlainCredentials(self.pika_username, self.pika_password)))
+            pika.ConnectionParameters(host=self.pika_host,
+                                      port=self.pika_port,
+                                      credentials=pika.PlainCredentials(self.pika_username, self.pika_password),
+                                      virtual_host="/",
+                                      channel_max=1000,
+                                      connection_attempts=10,
+                                      retry_delay=10,
+                                      heartbeat=300,
+                                      blocked_connection_timeout=300))
         self.channel = self.connection.channel()
 
-        self.channel.queue_declare(queue=self.pika_queue, durable=True)
-        self.channel.basic_qos(prefetch_count=1)
-        self.channel.basic_consume(queue=self.pika_queue, on_message_callback=callback)
+        #this is determined by the publisher(s)
+        #self.channel.confirm_delivery()
+
+        self.channel.queue_declare(queue=self.pika_queue, durable=True, exclusive=False, auto_delete=False)
+        #self.channel.queue_bind(queue=self.pika_queue, routing_key=self.pika_queue)
+        self.channel.basic_qos(prefetch_count=200)
+
+
+        self.channel.basic_consume(on_message_callback=functools.partial(callback),  queue=self.pika_queue)
+        #self.channel.consume(self.pika_queue, callback, auto_ack=False, exclusive=False)
+        #self.channel.confirm_delivery()
 
         # clear old deals so we don't waste time
-        self.channel.queue_purge(queue=self.pika_queue)
+        #self.channel.queue_purge(queue=self.pika_queue)
         logging.info("Waiting for messages...")
         self.channel.start_consuming()
 
@@ -314,5 +397,7 @@ class BuyListener:
             self.connection.close()
         if self.channel is not None :
             self.channel.stop_consuming()
-        if driver is not None:
-            driver.quit()
+            self.channel.close()
+        #exit(0) # causes an exception if not here
+        global driver
+        driver.quit()
