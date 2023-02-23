@@ -222,6 +222,14 @@ def msg_callback_wrapper(ch, method, properties, body):
         logging.error(f"Exception in callback: {e}")
         logging.debug(e)
 
+def msg_on_cancel(method_frame):
+    logging.error("Order cancelled by RabbitMQ")
+    logging.error(method_frame)
+    pass
+
+# def msg_on_return(ch, method, properties, body):
+#
+#     pass
 
 class BuyListener:
     # constructor passthrough configuration items
@@ -392,6 +400,11 @@ class BuyListener:
                                       heartbeat=300,
                                       blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT))
         self.channel = self.connection.channel()
+
+        # handle cancels, errors with fault tolerance
+        self.channel.add_on_cancel_callback(msg_on_cancel)
+
+
 
         # this is determined by the publisher(s)
         # self.channel.confirm_delivery()
