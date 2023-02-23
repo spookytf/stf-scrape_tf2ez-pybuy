@@ -13,6 +13,12 @@ import json
 import random
 import functools
 
+# ----------------- #
+#  GLOBAL VARIABLES #
+# ----------------- #
+global BLOCKED_CONNECTION_TIMEOUT
+BLOCKED_CONNECTION_TIMEOUT = 60 * 11 # 11 minutes
+
 global platform
 global LAST_TIME
 LAST_TIME = -1
@@ -362,6 +368,7 @@ class BuyListener:
         driver.quit()
 
     def start(self):
+        global BLOCKED_CONNECTION_TIMEOUT
         # ---------------- Start listening for messages ---------------- #
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(host=self.pika_host,
@@ -372,7 +379,7 @@ class BuyListener:
                                       connection_attempts=10,
                                       retry_delay=10,
                                       heartbeat=300,
-                                      blocked_connection_timeout=300))
+                                      blocked_connection_timeout=BLOCKED_CONNECTION_TIMEOUT))
         self.channel = self.connection.channel()
 
         #this is determined by the publisher(s)
@@ -383,7 +390,7 @@ class BuyListener:
         self.channel.basic_qos(prefetch_count=200)
 
 
-        self.channel.basic_consume(on_message_callback=functools.partial(callback),  queue=self.pika_queue)
+        self.channel.basic_consume(on_message_callback=callback,  queue=self.pika_queue, auto_ack=True, exclusive=False)
         #self.channel.consume(self.pika_queue, callback, auto_ack=False, exclusive=False)
         #self.channel.confirm_delivery()
 
@@ -393,11 +400,11 @@ class BuyListener:
         self.channel.start_consuming()
 
     def stop(self):
-        if self.connection is not None :
-            self.connection.close()
         if self.channel is not None :
             self.channel.stop_consuming()
             self.channel.close()
+        if self.connection is not None:
+            self.connection.close()
         #exit(0) # causes an exception if not here
         global driver
         driver.quit()
